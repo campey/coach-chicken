@@ -1,6 +1,10 @@
 import cv2
 import mediapipe as mp
 
+from pathlib import Path
+import csv
+from datetime import datetime
+
 mpDraw = mp.solutions.drawing_utils
 mpPose = mp.solutions.pose
 pose = mpPose.Pose()
@@ -32,8 +36,18 @@ press_landmarks = [RIGHT_ELBOW, RIGHT_SHOULDER, LEFT_ELBOW, LEFT_SHOULDER]
 pressing = False
 press_count = 0
 
-#while True:
-for i in range(1000):
+# csv header
+fieldnames = ['datetime', 'type']
+
+logfile = Path('coach_log.csv')
+
+if not logfile.exists():
+    with logfile.open('w') as f:
+        writer = csv.writer(f)
+        writer.writerow(fieldnames)
+
+while True:
+# for i in range(1000):
     success, img = cap.read()
     imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
@@ -72,6 +86,9 @@ for i in range(1000):
                 squatting = False
                 squat_count = squat_count + 1
                 print(f"SQUAT_REP {squat_count}")
+                with logfile.open('a', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow([datetime.now().isoformat(), 'Squat'])
 
 
         press_color = (0,0,0)
@@ -91,6 +108,9 @@ for i in range(1000):
                 pressing = False
                 press_count = press_count + 1
                 print(f"PRESS_REP {press_count}")
+                with logfile.open('a', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow([datetime.now().isoformat(), 'Press'])
 
 
         for landmark in squat_landmarks:
