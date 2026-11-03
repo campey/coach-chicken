@@ -18,15 +18,27 @@ A rep counter to make exercises more fun.
 
 ## Android app (`android/`)
 
-A plank timer that clucks at you. Milestones:
+A plank timer that clucks at you, and watches you plank.
 
- 1. **Timer** (this version): 1-minute plank, quiet clucking throughout, a louder cluck every 10s, a squawk at 1:00. Completed planks are logged locally (`sessions.csv` in the app's private storage) and shown as golden egg rings on a 5-week calendar (weeks start Sunday).
- 2. **Camera mode** (this version): "Auto-start with camera" shows the camera with your skeleton drawn over it (MediaPipe Pose, on-device).
- 3. **Auto start/stop** (this version): prop the phone side-on, get into a plank, hold it for 1.5s and the 60s timer starts; get up for 2s and it stops (logged as incomplete).
- 4. Later: plank form feedback ("pakak" when it's wrong).
+### Flow
+ 1. **Home**: the calendar (golden egg ring per day with a completed plank, 5 weeks, Sunday first) and **Start session**.
+ 2. **Session**: the camera shows your skeleton (MediaPipe Pose, on-device). Press **Start plank**, or just get into a plank and hold it for 1.5s, and the timer starts: quiet clucking throughout, a louder cluck every 10s.
+ 3. **At 60s**: a squawk, the quiet clucking stops, and the timer counts up past the goal in gold. The plank is *not* stopped: the button becomes **Done**.
+ 4. **Ending**: press **Stop/Done**, or just get up (the camera notices after 2s and back-dates the end to when you left the plank). 60s or more counts and earns the egg; ending earlier is logged as incomplete and leaves you in the session to try again.
+ Camera permission refused? The session still works with the buttons. Leaving the app winds the session up.
+
+Later: plank form feedback ("pakak" when it's wrong).
+
+### Build
+ * Needs JDK 17+ and the Android SDK (`ANDROID_HOME`, or `sdk.dir` in `android/local.properties`).
+ * `cd android && gradle :core:test :app:assembleDebug`, then install `app/build/outputs/apk/debug/app-debug.apk`.
+ * `core/` is plain Kotlin (timer cues, calendar grid, log format, pose/plank detection and tracker) with unit tests, including a replay of real recorded landmarks; `app/` is the Compose UI, CameraX and MediaPipe.
+
+### Sounds
+The sounds in `app/src/main/res/raw/` are synthesized placeholders from `python tools/generate_sounds.py`. Replace `cluck_quiet_loop.wav`, `cluck_loud.wav` and `squawk.wav` with real recordings any time.
 
 ### Pose log
-In camera mode, **Copy log** puts a pasteable CSV on the clipboard: per-frame (4/s) detector verdict, the numbers behind it (body angle, hip angle, elbow ratios) and the key joints, plus start/stop events. Paste it back to tune the plank detection thresholds (`readPlank` in `core/PlankPose.kt`).
+**Copy log** (in the session, or on the home screen afterwards) puts a pasteable CSV on the clipboard: per-frame (4/s) detector verdict, the numbers behind it (body angle, hip angle, elbow ratios) and the key joints, plus start/stop events. Paste it back to tune the plank detection thresholds (`readPlank` in `core/PlankPose.kt`).
 
 ### Build
  * Needs JDK 17+ and the Android SDK (`ANDROID_HOME`, or `sdk.dir` in `android/local.properties`).

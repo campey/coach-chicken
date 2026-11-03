@@ -50,4 +50,9 @@ class PlankTimelineTest {
         assertEquals(1L, t.remainingMs(59_999))
         assertEquals(0L, t.remainingMs(70_000))
     }
+
+    @Test fun nothingPlaysAfterTheGoalSoThePlankCanKeepGoing() {
+        assertEquals(emptyList(), t.cuesBetween(61_000, 125_000))
+        assertEquals(emptyList(), t.cuesBetween(60_000, 90_000))
+    }
 }

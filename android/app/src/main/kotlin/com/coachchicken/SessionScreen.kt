@@ -10,6 +10,7 @@ import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,9 +19,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -34,10 +37,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,18 +60,86 @@ private val BONES = listOf(
 )
 private val JOINTS = (11..16) + (23..28)
 
-/** Camera preview with the detected skeleton, status line and timer. Starts the plank by itself. */
+/**
+ * The session: waiting for the plank (READY), then timing it (PLANKING). With the camera on it shows the
+ * preview and skeleton and starts/ends the plank by itself; the buttons are always there as a fallback.
+ */
 @Composable
-fun CameraScreen(
+fun SessionScreen(
     state: UiState,
     onPose: (List<Landmark>?, Float) -> Unit,
-    onFlip: () -> Unit,
-    onStop: () -> Unit,
+    onStartPlank: () -> Unit,
+    onEnd: () -> Unit,
     onClose: () -> Unit,
-    poseLogText: () -> String,
+    onFlip: () -> Unit,
+    onCopyLog: (() -> Unit)?,
 ) {
+    val onCam = state.cameraOn
+    val fg = if (onCam) Color.White else MaterialTheme.colorScheme.onBackground
+    val scrim = if (onCam) Scrim else Color.Transparent
+    val reached = state.phase == Phase.PLANKING && state.elapsedMs >= state.goalMs
+
+    KeepScreenOn(true)
+    Box(Modifier.fillMaxSize().background(if (onCam) Color.Black else MaterialTheme.colorScheme.background)) {
+        if (onCam) {
+            CameraLayer(state, onPose)
+        }
+
+        Column(
+            Modifier.fillMaxSize().systemBarsPadding().padding(16.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                if (!onCam) {
+                    Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 56.dp, height = 110.dp))
+                }
+                if (state.phase == Phase.PLANKING) {
+                    Text(
+                        if (reached) "+" + formatElapsed(state.elapsedMs - state.goalMs) else formatTime(state.goalMs - state.elapsedMs),
+                        fontSize = 72.sp,
+                        color = if (reached) Gold else fg,
+                        modifier = Modifier.background(scrim, RoundedCornerShape(16.dp)).padding(horizontal = 20.dp),
+                    )
+                }
+                Text(
+                    statusText(state, reached),
+                    color = fg,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 8.dp).background(scrim, RoundedCornerShape(12.dp)).padding(12.dp),
+                )
+                val progress = state.pose?.holdProgress ?: 0f
+                if (state.phase == Phase.READY && onCam && progress > 0f) {
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.padding(top = 8.dp).fillMaxWidth(0.6f))
+                }
+            }
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (state.phase == Phase.READY) {
+                    Button(onStartPlank, Modifier.fillMaxWidth()) { Text("Start plank") }
+                } else {
+                    Button(onEnd, Modifier.fillMaxWidth()) { Text(if (reached) "Done" else "Stop") }
+                }
+                val extras = ButtonDefaults.outlinedButtonColors(containerColor = scrim, contentColor = fg)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (state.phase == Phase.READY) {
+                        OutlinedButton(onClose, Modifier.weight(1f), colors = extras) { Text("Close") }
+                    }
+                    if (onCam) {
+                        OutlinedButton(onFlip, Modifier.weight(1f), colors = extras) { Text(if (state.frontCamera) "Rear cam" else "Front cam") }
+                    }
+                    if (onCam && onCopyLog != null) {
+                        OutlinedButton(onCopyLog, Modifier.weight(1f), colors = extras) { Text("Copy log") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Camera preview, skeleton overlay and the pose analyser; only exists while the camera is on. */
+@Composable
+private fun CameraLayer(state: UiState, onPose: (List<Landmark>?, Float) -> Unit) {
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
     val latestOnPose = rememberUpdatedState(onPose)
     val analyzer = remember { PoseAnalyzer(context) { lm, aspect -> latestOnPose.value(lm, aspect) } }
     val executor = remember { Executors.newSingleThreadExecutor() }
@@ -80,50 +150,18 @@ fun CameraScreen(
             analyzer.close()
         }
     }
-
-    KeepScreenOn(true)
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
-        CameraPreview(front = state.frontCamera, analyzer = analyzer, executor = executor, modifier = Modifier.fillMaxSize())
-        PoseOverlay(state.pose, mirror = state.frontCamera, modifier = Modifier.fillMaxSize())
-
-        Column(
-            Modifier.fillMaxSize().systemBarsPadding().padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                if (state.phase == Phase.RUNNING) {
-                    Text(formatTime(state.remainingMs), fontSize = 72.sp, color = Color.White,
-                        modifier = Modifier.background(Scrim, RoundedCornerShape(16.dp)).padding(horizontal = 20.dp))
-                }
-                Text(
-                    statusText(state),
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = 8.dp).background(Scrim, RoundedCornerShape(12.dp)).padding(12.dp),
-                )
-                val progress = state.pose?.holdProgress ?: 0f
-                if (state.phase == Phase.IDLE && progress > 0f) {
-                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.padding(top = 8.dp).fillMaxWidth(0.6f))
-                }
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (state.phase == Phase.RUNNING) {
-                    Button(onStop, Modifier.weight(1f)) { Text("Stop") }
-                } else {
-                    Button(onClose, Modifier.weight(1f)) { Text("Close") }
-                }
-                OutlinedButton(onFlip, Modifier.weight(1f)) { Text(if (state.frontCamera) "Rear cam" else "Front cam") }
-                OutlinedButton({ clipboard.setText(AnnotatedString(poseLogText())) }, Modifier.weight(1f)) { Text("Copy log") }
-            }
-        }
-    }
+    CameraPreview(front = state.frontCamera, analyzer = analyzer, executor = executor, modifier = Modifier.fillMaxSize())
+    PoseOverlay(state.pose, mirror = state.frontCamera, modifier = Modifier.fillMaxSize())
 }
 
-private fun statusText(state: UiState): String = when {
-    state.phase == Phase.RUNNING -> "Planking. Get up to stop."
+private fun statusText(state: UiState, reached: Boolean): String = when {
+    state.phase == Phase.PLANKING && reached ->
+        if (state.cameraOn) "Goal reached! Keep going, then get up or tap Done." else "Goal reached! Keep going, then tap Done."
+    state.phase == Phase.PLANKING ->
+        if (state.cameraOn) "Planking. Get up or tap Stop to end early." else "Planking. Tap Stop to end early."
+    !state.cameraOn -> "Get into position, then tap Start plank."
     state.pose == null || state.pose.reading == PoseReading.NO_BODY ->
-        "Prop the phone so the camera sees you side-on, head to toe."
+        "Prop the phone so the camera sees you side-on, head to toe, then plank (or tap Start plank)."
     state.pose.reading == PoseReading.NOT_PLANK -> "Get into plank position."
     else -> "Hold it..."
 }

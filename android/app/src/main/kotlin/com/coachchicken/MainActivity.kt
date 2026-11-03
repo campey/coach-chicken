@@ -19,12 +19,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.Button
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -36,7 +36,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -51,49 +50,44 @@ class MainActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize()) {
                     val state by vm.state.collectAsStateWithLifecycle()
                     val context = LocalContext.current
+                    val clipboard = LocalClipboardManager.current
+                    // The session opens either way; without camera permission only the buttons work.
                     val askCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                        if (granted) vm.enterCamera()
+                        vm.openSession(camera = granted)
                     }
-                    val onCamera = {
+                    val onStartSession = {
                         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-                        if (granted) vm.enterCamera() else askCamera.launch(Manifest.permission.CAMERA)
+                        if (granted) vm.openSession(camera = true) else askCamera.launch(Manifest.permission.CAMERA)
                     }
-                    if (state.cameraMode && state.phase != Phase.DONE) {
-                        CameraScreen(
+                    val copyLog: (() -> Unit)? =
+                        if (vm.hasPoseLog()) ({ clipboard.setText(AnnotatedString(vm.poseLogText())) }) else null
+
+                    when (state.phase) {
+                        Phase.READY, Phase.PLANKING -> SessionScreen(
                             state = state,
                             onPose = vm::onPose,
+                            onStartPlank = vm::startPlank,
+                            onEnd = { vm.endPlank() },
+                            onClose = vm::closeSession,
                             onFlip = vm::flipCamera,
-                            onStop = { vm.cancel() },
-                            onClose = vm::exitCamera,
-                            poseLogText = vm::poseLogText,
+                            onCopyLog = copyLog,
                         )
-                    } else {
-                        val clipboard = LocalClipboardManager.current
-                        val copyLog = if (vm.hasPoseLog()) ({ clipboard.setText(AnnotatedString(vm.poseLogText())) }) else null
-                        CoachScreen(state, vm::start, onCamera, { vm.cancel() }, vm::dismissDone, copyLog)
+                        Phase.HOME, Phase.DONE -> HomeScreen(state, onStartSession, vm::dismissDone, copyLog)
                     }
                 }
             }
         }
     }
 
-    // Leaving the foreground mid-plank cancels the session (no foreground service yet).
+    // Leaving the foreground winds the session up (no foreground service yet).
     override fun onStop() {
         super.onStop()
-        vm.cancel()
+        vm.onAppStopped()
     }
 }
 
 @Composable
-private fun CoachScreen(
-    state: UiState,
-    onStart: () -> Unit,
-    onCamera: () -> Unit,
-    onStop: () -> Unit,
-    onDone: () -> Unit,
-    onCopyLog: (() -> Unit)?,
-) {
-    KeepScreenOn(state.phase == Phase.RUNNING)
+private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onDone: () -> Unit, onCopyLog: (() -> Unit)?) {
     Column(
         Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
@@ -101,24 +95,17 @@ private fun CoachScreen(
     ) {
         Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 56.dp, height = 110.dp))
         Text("Coach Chicken", style = MaterialTheme.typography.headlineMedium)
-        when (state.phase) {
-            Phase.RUNNING -> {
-                Text(formatTime(state.remainingMs), fontSize = 96.sp)
-                OutlinedButton(onStop, Modifier.fillMaxWidth()) { Text("Stop") }
-            }
-            Phase.IDLE, Phase.DONE -> {
-                if (state.phase == Phase.DONE) Text("Plank done! 🥚", style = MaterialTheme.typography.titleLarge)
-                CalendarView(state.calendar, Modifier.fillMaxWidth())
-                if (state.phase == Phase.DONE) {
-                    Button(onDone, Modifier.fillMaxWidth()) { Text("OK") }
-                } else {
-                    Button(onStart, Modifier.fillMaxWidth()) { Text("Start plank") }
-                    OutlinedButton(onCamera, Modifier.fillMaxWidth()) { Text("Auto-start with camera") }
-                }
-                if (onCopyLog != null) {
-                    OutlinedButton(onCopyLog, Modifier.fillMaxWidth()) { Text("Copy pose log") }
-                }
-            }
+        if (state.phase == Phase.DONE) {
+            Text("Plank done! 🥚 ${formatElapsed(state.elapsedMs)}", style = MaterialTheme.typography.titleLarge)
+        }
+        CalendarView(state.calendar, Modifier.fillMaxWidth())
+        if (state.phase == Phase.DONE) {
+            Button(onDone, Modifier.fillMaxWidth()) { Text("OK") }
+        } else {
+            Button(onStartSession, Modifier.fillMaxWidth()) { Text("Start session") }
+        }
+        if (onCopyLog != null) {
+            OutlinedButton(onCopyLog, Modifier.fillMaxWidth()) { Text("Copy pose log") }
         }
     }
 }
@@ -132,8 +119,14 @@ internal fun KeepScreenOn(on: Boolean) {
     }
 }
 
-/** Seconds shown rounded up, so the display reads 1:00 at the start and 0:00 only at the end. */
+/** Countdown display: rounded up, so it reads 1:00 at the start and 0:00 only at the goal. */
 internal fun formatTime(remainingMs: Long): String {
     val s = ((remainingMs + 999) / 1000).toInt()
+    return "%d:%02d".format(s / 60, s % 60)
+}
+
+/** Elapsed display: rounded down. */
+internal fun formatElapsed(ms: Long): String {
+    val s = (ms / 1000).toInt()
     return "%d:%02d".format(s / 60, s % 60)
 }

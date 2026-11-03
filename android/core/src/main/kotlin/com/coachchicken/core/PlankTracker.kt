@@ -20,6 +20,7 @@ class PlankTracker(
     private var plankSince: Long? = null
     private var lostSince: Long? = null
     private var recoverSince: Long? = null
+    private var awaitingFirstPlank = false
 
     /** Start of the lapse that ended the most recent plank (null until one has ended). */
     var lastEndedLostAtMs: Long? = null
@@ -38,6 +39,19 @@ class PlankTracker(
                 plankSince = null
                 lostSince = null
                 return Event.STARTED
+            }
+            return null
+        }
+        if (awaitingFirstPlank) {
+            // Started from a button: don't treat "not in position yet" as getting up.
+            if (inPlank) {
+                val since = recoverSince ?: nowMs.also { recoverSince = it }
+                if (nowMs - since >= recoverHoldMs) {
+                    awaitingFirstPlank = false
+                    recoverSince = null
+                }
+            } else {
+                recoverSince = null
             }
             return null
         }
@@ -65,6 +79,16 @@ class PlankTracker(
         return null
     }
 
+    /**
+     * The plank was started some other way (a button). The tracker then watches for the plank to be
+     * seen and only afterwards for it to end, so getting into position never counts as getting up.
+     */
+    fun startedExternally() {
+        reset()
+        active = true
+        awaitingFirstPlank = true
+    }
+
     /** 0..1: how far through the start hold we are (1 once a plank has started). */
     fun holdProgress(nowMs: Long): Float =
         if (active) 1f else plankSince?.let { ((nowMs - it) / startHoldMs.toFloat()).coerceIn(0f, 1f) } ?: 0f
@@ -74,5 +98,6 @@ class PlankTracker(
         plankSince = null
         lostSince = null
         recoverSince = null
+        awaitingFirstPlank = false
     }
 }

@@ -86,4 +86,40 @@ class PlankTrackerTest {
         assertEquals(Event.ENDED, t.update(8_000L, NOT_PLANK))
         assertEquals(6_000L, t.lastEndedLostAtMs)
     }
+
+    @Test fun buttonStartDoesNotEndWhileGettingIntoPosition() {
+        val t = PlankTracker()
+        t.startedExternally()
+        assertTrue(t.active)
+        assertNull(t.update(0L, NOT_PLANK))
+        assertNull(t.update(10_000L, NOT_PLANK)) // still getting down, well past the grace period
+        assertNull(t.update(30_000L, NO_BODY))
+        assertTrue(t.active)
+    }
+
+    @Test fun buttonStartThenPlankSeenThenGettingUpEnds() {
+        val t = PlankTracker()
+        t.startedExternally()
+        t.feed(5_000L to PLANK, 5_600L to PLANK) // seen for 0.6s: armed
+        assertNull(t.update(20_000L, NOT_PLANK))
+        assertEquals(Event.ENDED, t.update(22_000L, NOT_PLANK))
+        assertEquals(20_000L, t.lastEndedLostAtMs)
+    }
+
+    @Test fun aSingleFalsePlankFrameDoesNotArmAButtonStart() {
+        val t = PlankTracker()
+        t.startedExternally()
+        t.feed(1_000L to PLANK, 1_100L to NOT_PLANK) // blip
+        assertNull(t.update(9_000L, NOT_PLANK))
+        assertNull(t.update(20_000L, NOT_PLANK))
+        assertTrue(t.active)
+    }
+
+    @Test fun resetDisarms() {
+        val t = PlankTracker()
+        t.startedExternally()
+        t.reset()
+        assertTrue(!t.active)
+        assertNull(t.update(0L, NOT_PLANK))
+    }
 }
