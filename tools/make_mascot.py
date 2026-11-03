@@ -75,10 +75,10 @@ FULL_BODY = [
     ("fill", "M26.5,18 L28,18 C29,30 31,42 35,50 L32,50 C29,42 27.5,30 26.5,18 Z", YEL_D, 0),          # neck shading
 ] + collar(47, 10.5) + HEAD + rays()
 
-HEAD_SHOT = [
-    ("fill", "M21,18 L28,18 L30,32 L19,32 Z", YEL, 0),                                                 # neck stub
-    ("fill", "M26.5,18 L28,18 L30,32 L27,32 Z", YEL_D, 0),
-] + collar(28.5, 8.5) + HEAD + rays()
+HEAD_SHOT = [  # neck runs off the bottom so the launcher mask trims it cleanly (no collar in the icon)
+    ("fill", "M21,18 L28,18 L31,42 L18,42 Z", YEL, 0),
+    ("fill", "M26.5,18 L28,18 L31,42 L27,42 Z", YEL_D, 0),
+] + HEAD + rays()
 
 
 def vd_paths(shapes, indent="    "):
@@ -100,8 +100,9 @@ def full_body_xml():
                      + vd_paths(FULL_BODY) + ["</vector>"]) + "\n"
 
 
-# Head shot (with rays) spans roughly x 16..47, y 0.5..36 -> scale about its centre (31.5, 18) onto the 108 canvas centre.
-HS_SCALE, HS_TX, HS_TY = 2.0, 54 - 31.5 * 2.0, 54 - 18 * 2.0
+# Head shot: deliberately bigger than the adaptive-icon safe zone. Centred on the head and crest
+# (so the full crest and the mouth stay in view); the tips of the rays may be cropped by the launcher mask.
+HS_SCALE, HS_TX, HS_TY = 2.0, 54 - 28.5 * 2.0, 54 - 14.5 * 2.0
 
 
 def launcher_xml():
