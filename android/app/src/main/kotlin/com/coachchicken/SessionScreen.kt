@@ -245,19 +245,9 @@ private fun CameraPreview(front: Boolean, analyzer: ImageAnalysis.Analyzer, exec
     AndroidView({ previewView }, modifier)
 }
 
+private val Ink = Color(0xFF3B2A20)         // the hand-drawn outline
 private val GoldGlow = Color(0xFFFFB300)
 private val SparkleGold = Color(0xFFFFE082)
-private val LEFT_SIDE = setOf(11, 13, 15, 23, 25, 27)
-private val RIGHT_SIDE = setOf(12, 14, 16, 24, 26, 28)
-
-/** A cheap deterministic hash to float in 0..1, so each sparkle keeps its own character from frame to frame. */
-private fun rnd(seed: Int): Float {
-    var x = seed * -1640531527
-    x = x xor (x ushr 15); x *= 0x2c1b3c6d
-    x = x xor (x ushr 12); x *= 0x297a2d39
-    x = x xor (x ushr 15)
-    return (x and 0xFFFFFF) / 16777216f
-}
 
 private fun DrawScope.drawStar(c: Offset, r: Float, color: Color) {
     val k = 0.22f // how fat the four points are
@@ -375,14 +365,8 @@ private fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier) {
             drawSparkles(visibleBones, pose.aura, pose.streak, nowMs)
         }
 
-        val far = when (pose.judgedSide) { 'L' -> RIGHT_SIDE; 'R' -> LEFT_SIDE; else -> emptySet() }
-        visibleBones.forEach { (p, q) -> drawLine(base, p, q, 6.dp.toPx(), StrokeCap.Round) }
-        JOINTS.forEach {
-            if (visible(it)) {
-                val isFar = it in far
-                drawCircle(if (isFar) base.copy(alpha = 0.55f) else base, (if (isFar) 4.5f else 7f).dp.toPx(), at(lms[it]))
-            }
-        }
+        val palette = BonePalette(ink = Ink, fill = base, shine = Color.White)
+        drawBoneSkeleton(lms, { at(it) }, pose.judgedSide, palette)
         if (pose.hipInZone == true) {
             val judgedHip = if (pose.judgedSide == 'L') 23 else 24
             if (visible(judgedHip)) drawCircle(Green, 9.dp.toPx(), at(lms[judgedHip]))
