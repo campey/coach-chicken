@@ -21,8 +21,12 @@ A rep counter to make exercises more fun.
 A plank timer that clucks at you. Milestones:
 
  1. **Timer** (this version): 1-minute plank, quiet clucking throughout, a louder cluck every 10s, a squawk at 1:00. Completed planks are logged locally (`sessions.csv` in the app's private storage) and shown as golden egg rings on a 5-week calendar (weeks start Sunday).
- 2. Camera preview with pose landmarks (MediaPipe).
- 3. Plank form feedback ("pakak" when it's wrong) and auto start/stop when you get down/up.
+ 2. **Camera mode** (this version): "Auto-start with camera" shows the camera with your skeleton drawn over it (MediaPipe Pose, on-device).
+ 3. **Auto start/stop** (this version): prop the phone side-on, get into a plank, hold it for 1.5s and the 60s timer starts; get up for 2s and it stops (logged as incomplete).
+ 4. Later: plank form feedback ("pakak" when it's wrong).
+
+### Pose log
+In camera mode, **Copy log** puts a pasteable CSV on the clipboard: per-frame (4/s) detector verdict, the numbers behind it (body angle, hip angle, elbow ratios) and the key joints, plus start/stop events. Paste it back to tune the plank detection thresholds (`readPlank` in `core/PlankPose.kt`).
 
 ### Build
  * Needs JDK 17+ and the Android SDK (`ANDROID_HOME`, or `sdk.dir` in `android/local.properties`).
