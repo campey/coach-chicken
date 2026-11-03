@@ -4,7 +4,7 @@
 Lore: inspired by the rubber chicken with a pulley in the middle, and the squeaky rubber
 chicken with a pivot neck found in Malaysia and used as an exercise squeaker during covid.
 Hence: an upright, limp, gangly rubber chicken: long neck, small head turned to the side,
-a mid-squeak "O" beak with rays fanning out of it, and a bow tie.
+a mid-squeak open \"O\" mouth (no beak) with rays fanning out of it, and a bow tie.
 
 Original artwork (flat shapes, no outlines), drawn in a 56 x 110 space.
   ic_chicken.xml          full body, for the in-app header
@@ -15,9 +15,10 @@ import sys
 from pathlib import Path
 
 YEL, YEL_D, ORANGE = "#FFD43B", "#F2B705", "#F08C00"
-RED, RED_D, DARK, MOUTH = "#E03131", "#A61E1E", "#2B2B2B", "#7A1F1F"
+RED, RED_D, DARK = "#E03131", "#A61E1E", "#2B2B2B"
+MOUTH_IN, MOUTH_SHADE = "#F5A524", "#C97A0A"
 CX = 24.5                 # body centre line
-MOUTH_C = (35.5, 19.6)    # middle of the beak opening; the rays fan out from here
+MOUTH_C = (29.3, 17.2)    # centre of the open mouth; the rays fan out from here
 
 
 def circle(cx, cy, r):
@@ -43,25 +44,23 @@ def collar(y, hw):
 def rays():
     """Squeak rays fanning out of the mouth, longest straight ahead."""
     out = []
-    for deg, r2 in [(-52, 14.5), (-26, 16), (0, 17.5), (26, 16), (52, 14.5)]:
+    for deg, r2 in [(-52, 15.5), (-26, 17), (0, 18.5), (26, 17), (52, 15.5)]:
         a = math.radians(deg)
-        x1, y1 = MOUTH_C[0] + 6.5 * math.cos(a), MOUTH_C[1] + 6.5 * math.sin(a)
+        x1, y1 = MOUTH_C[0] + 7.5 * math.cos(a), MOUTH_C[1] + 7.5 * math.sin(a)
         x2, y2 = MOUTH_C[0] + r2 * math.cos(a), MOUTH_C[1] + r2 * math.sin(a)
         out.append(("stroke", f"M{x1:.1f},{y1:.1f} L{x2:.1f},{y2:.1f}", ORANGE, 1.7))
     return out
 
 
-HEAD = [  # small head, three-quarter view turned to face right
-    ("fill", ellipse(25.5, 13, 7, 6.8), YEL, 0),                                           # head
-    ("fill", ellipse(29.5, 16.5, 4, 5.5), YEL, 0),                                         # cheek
+HEAD = [  # small head, three-quarter view turned to the right, a tall open "O" mouth set into the face (no beak)
+    ("fill", ellipse(25.5, 13.2, 7.2, 8.2), YEL, 0),                                       # head
     ("fill", "M19,8 C17.5,5 16.5,2.5 17.5,0.5 C20.5,1.5 23.5,3.5 26,7.5 Z", RED, 0),       # crest: one swept-back blade
-    ("fill", circle(23.8, 10.8, 3.3), DARK, 0), ("fill", circle(23.8, 10.8, 2.6), "#FFFFFF", 0),     # near eye
-    ("fill", circle(29.6, 10.3, 2.9), DARK, 0), ("fill", circle(29.6, 10.3, 2.2), "#FFFFFF", 0),     # far eye
-    ("fill", circle(24.6, 11.7, 1.2), DARK, 0), ("fill", circle(30.2, 11.2, 1.05), DARK, 0),          # pupils look at the beak
-    ("fill", ellipse(27.8, 18.2, 5, 4.6), YEL, 0),                                         # jaw
-    ("fill", "M29,19 L38.6,15.8 L37.6,24 L28.5,22.4 Z", MOUTH, 0),                         # inside of the open mouth
-    ("fill", "M28,13.2 C32,12.6 36,13.6 38.8,15.7 C35.5,17.2 32.5,18 29,19 Z", ORANGE, 0),   # upper beak
-    ("fill", "M29,20.4 C33,20.8 35.8,21.9 37.9,24.1 C34.6,24.9 31.6,24.7 28.4,23.2 Z", ORANGE, 0),  # lower beak
+    ("fill", ellipse(MOUTH_C[0], MOUTH_C[1], 3.4, 4.8), RED_D, 0),                         # lip
+    ("fill", ellipse(MOUTH_C[0] + 0.2, MOUTH_C[1] + 0.2, 2.5, 3.8), MOUTH_IN, 0),          # inside of the mouth
+    ("fill", ellipse(MOUTH_C[0] + 0.2, MOUTH_C[1] - 2.1, 2.1, 1.5), MOUTH_SHADE, 0),       # shadow at the top of the mouth
+    ("fill", circle(23.6, 9.6, 3.3), DARK, 0), ("fill", circle(23.6, 9.6, 2.6), "#FFFFFF", 0),        # near eye
+    ("fill", circle(29.2, 9.2, 2.9), DARK, 0), ("fill", circle(29.2, 9.2, 2.2), "#FFFFFF", 0),        # far eye
+    ("fill", circle(24.2, 10.6, 1.2), DARK, 0), ("fill", circle(29.6, 10.1, 1.05), DARK, 0),          # pupils look at the mouth
 ]
 
 FULL_BODY = [
@@ -101,8 +100,8 @@ def full_body_xml():
                      + vd_paths(FULL_BODY) + ["</vector>"]) + "\n"
 
 
-# Head shot (with rays) spans roughly x 16..53, y 0.5..36 -> scale about its centre (34.5, 18) onto the 108 canvas centre.
-HS_SCALE, HS_TX, HS_TY = 1.9, 54 - 34.5 * 1.9, 54 - 18 * 1.9
+# Head shot (with rays) spans roughly x 16..47, y 0.5..36 -> scale about its centre (31.5, 18) onto the 108 canvas centre.
+HS_SCALE, HS_TX, HS_TY = 2.0, 54 - 31.5 * 2.0, 54 - 18 * 2.0
 
 
 def launcher_xml():
