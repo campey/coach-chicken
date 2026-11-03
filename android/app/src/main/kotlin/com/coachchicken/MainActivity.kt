@@ -63,7 +63,7 @@ private fun CoachScreen(state: UiState, onStart: () -> Unit, onStop: () -> Unit,
         verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(120.dp))
+        Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 60.dp, height = 100.dp))
         Text("Coach Chicken", style = MaterialTheme.typography.headlineMedium)
         when (state.phase) {
             Phase.RUNNING -> {
