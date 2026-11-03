@@ -96,12 +96,12 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
      * Stop early (button), because the app left the foreground, or because the camera saw you get up.
      * Logged as incomplete. Leaves camera mode unless [keepCamera] (used when the camera ended it).
      */
-    fun cancel(keepCamera: Boolean = false) {
+    fun cancel(keepCamera: Boolean = false, endedAtRealtime: Long? = null) {
         if (ticker == null) {
             if (!keepCamera) exitCamera()
             return
         }
-        val elapsed = SystemClock.elapsedRealtime() - startedRealtime
+        val elapsed = ((endedAtRealtime ?: SystemClock.elapsedRealtime()) - startedRealtime).coerceAtLeast(0)
         ticker?.cancel()
         finish(completed = false, elapsedMs = elapsed, goTo = Phase.IDLE, keepCamera = keepCamera)
     }
@@ -141,7 +141,8 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 PlankTracker.Event.ENDED -> {
                     poseLog.addEvent(cameraMs(), "TRACKER_ENDED")
-                    if (_state.value.phase == Phase.RUNNING) cancel(keepCamera = true)
+                    // The plank really ended when you first lost it, not when the grace period ran out.
+                    if (_state.value.phase == Phase.RUNNING) cancel(keepCamera = true, endedAtRealtime = tracker.lastEndedLostAtMs)
                 }
                 null -> Unit
             }

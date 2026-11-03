@@ -2,12 +2,16 @@ package com.coachchicken.core
 
 /**
  * Turns noisy per-frame [PoseReading]s into start/stop events.
- * Start: a plank must be held for [startHoldMs]. Stop: the plank must be lost for [endGraceMs]
- * (so a dropped frame or two doesn't end the session).
+ *  - Start: a plank must be held for [startHoldMs].
+ *  - Stop: the plank must be lost for [endGraceMs], so a dropped frame or two doesn't end the session.
+ *  - A lapse is only forgiven once the plank has been back for [recoverHoldMs]; a brief false "plank"
+ *    reading while getting up must not restart the grace period.
+ * When a plank ends, [lastEndedLostAtMs] is when it was last held (the start of the lapse).
  */
 class PlankTracker(
     private val startHoldMs: Long = 1_500,
     private val endGraceMs: Long = 2_000,
+    private val recoverHoldMs: Long = 500,
 ) {
     enum class Event { STARTED, ENDED }
 
@@ -15,6 +19,11 @@ class PlankTracker(
         private set
     private var plankSince: Long? = null
     private var lostSince: Long? = null
+    private var recoverSince: Long? = null
+
+    /** Start of the lapse that ended the most recent plank (null until one has ended). */
+    var lastEndedLostAtMs: Long? = null
+        private set
 
     fun update(nowMs: Long, reading: PoseReading): Event? {
         val inPlank = reading == PoseReading.PLANK
@@ -33,13 +42,23 @@ class PlankTracker(
             return null
         }
         if (inPlank) {
-            lostSince = null
-            return null
+            if (lostSince != null) {
+                val since = recoverSince ?: nowMs.also { recoverSince = it }
+                if (nowMs - since >= recoverHoldMs) {
+                    lostSince = null
+                    recoverSince = null
+                }
+            }
+        } else {
+            recoverSince = null
+            if (lostSince == null) lostSince = nowMs
         }
-        val since = lostSince ?: nowMs.also { lostSince = it }
-        if (nowMs - since >= endGraceMs) {
+        val lost = lostSince
+        if (lost != null && nowMs - lost >= endGraceMs) {
             active = false
+            lastEndedLostAtMs = lost
             lostSince = null
+            recoverSince = null
             plankSince = null
             return Event.ENDED
         }
@@ -54,5 +73,6 @@ class PlankTracker(
         active = false
         plankSince = null
         lostSince = null
+        recoverSince = null
     }
 }

@@ -25,7 +25,7 @@ class PoseLogTest {
         val log = PoseLog()
         log.addFrame(1234, "RUNNING", pose(), 1f, PoseReading.PLANK)
         val row = rows(log).single()
-        assertTrue(row.startsWith("1234,RUNNING,PLANK,1.000,L,"), row)
+        assertTrue(row.startsWith("1234,RUNNING,PLANK,1.000,L,A,"), row)
         assertTrue("0.250,0.500" in row, row) // left shoulder x,y
     }
 

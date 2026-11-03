@@ -73,3 +73,42 @@ class PlankMetricsTest {
 
     @Test fun nullWithoutEnoughLandmarks() = assertEquals(null, plankMetrics(emptyList()))
 }
+
+class MissingLegsTest {
+    private fun pose(ankleVis: Float, kneeVis: Float): MutableList<Landmark> {
+        val l = MutableList(PoseIdx.COUNT) { Landmark(0f, 0f, 0f) }
+        l[11] = Landmark(0.25f, 0.50f); l[13] = Landmark(0.25f, 0.62f); l[23] = Landmark(0.50f, 0.54f)
+        l[25] = Landmark(0.65f, 0.56f, kneeVis); l[27] = Landmark(0.80f, 0.58f, ankleVis)
+        return l
+    }
+
+    @Test fun usesTheAnkleWhenVisible() {
+        assertEquals('A', plankMetrics(pose(1f, 1f))!!.lower)
+        assertEquals(PoseReading.PLANK, readPlank(pose(1f, 1f)))
+    }
+
+    @Test fun fallsBackToTheKneeWhenTheAnkleIsMissing() {
+        assertEquals('K', plankMetrics(pose(0.1f, 0.9f))!!.lower)
+        assertEquals(PoseReading.PLANK, readPlank(pose(0.1f, 0.9f)))
+    }
+
+    @Test fun fallsBackToTheTorsoWhenBothLegPointsAreMissing() {
+        assertEquals('H', plankMetrics(pose(0.1f, 0.1f))!!.lower)
+        assertEquals(PoseReading.PLANK, readPlank(pose(0.1f, 0.1f)))
+    }
+
+    @Test fun torsoOnlyStillRejectsAStandingBody() {
+        val standing = pose(0f, 0f).also { it[11] = Landmark(0.5f, 0.2f); it[13] = Landmark(0.5f, 0.35f); it[23] = Landmark(0.5f, 0.5f) }
+        assertEquals(PoseReading.NOT_PLANK, readPlank(standing))
+    }
+
+    @Test fun torsoOnlyStillNeedsTheArmProp() {
+        val lying = pose(0f, 0f).also { it[13] = Landmark(0.25f, 0.50f) } // elbow level with shoulder
+        assertEquals(PoseReading.NOT_PLANK, readPlank(lying))
+    }
+
+    @Test fun kneeFallbackStillRejectsPikedHips() {
+        val piked = pose(0f, 1f).also { it[23] = Landmark(0.50f, 0.30f) }
+        assertEquals(PoseReading.NOT_PLANK, readPlank(piked))
+    }
+}
