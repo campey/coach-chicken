@@ -206,3 +206,44 @@ class GradingTest {
         assertEquals(PoseReading.NO_BODY, PlankGrade.NO_BODY.reading)
     }
 }
+
+/** Rows from a second real phone run (landscape, phone propped at a slight tilt: a straight plank read 12-17 degrees). */
+class TiltedCameraTest {
+    private fun row(
+        sho: Pair<Float, Float>, elb: Pair<Float, Float>, hip: Pair<Float, Float>,
+        kne: Pair<Float, Float>, ank: Pair<Float, Float>, vis: Float,
+    ): List<Landmark> {
+        val l = MutableList(PoseIdx.COUNT) { Landmark(0f, 0f, 0f) }
+        l[PoseIdx.R_SHOULDER] = Landmark(sho.first, sho.second, vis); l[PoseIdx.R_ELBOW] = Landmark(elb.first, elb.second, vis)
+        l[PoseIdx.R_HIP] = Landmark(hip.first, hip.second, vis); l[PoseIdx.R_KNEE] = Landmark(kne.first, kne.second, vis)
+        l[PoseIdx.R_ANKLE] = Landmark(ank.first, ank.second, vis)
+        return l
+    }
+
+    private val aspect = 4f / 3f
+
+    // t=36082: body angle 12.6, hip 173.5, elbow drop 0.58. Used to be OK only because of the 12 degree body limit.
+    private val tiltedAnkle = row(0.624f to 0.530f, 0.546f to 0.816f, 0.270f to 0.666f, 0.019f to 0.746f, -0.168f to 0.766f, 0.52f)
+
+
+    @Test fun aStraightPlankOnATiltedPhoneStillGradesPerfect() {
+        val m = plankMetrics(tiltedAnkle, aspect)!!
+        assertTrue(m.bodyAngleDeg > 12.0, "body ${m.bodyAngleDeg}")
+        assertEquals(PlankGrade.PERFECT, gradePlank(tiltedAnkle, aspect))
+    }
+
+    @Test fun theGradeDoesNotFlipWhenTheLegPointFlipsBetweenAnkleAndKnee() {
+        val withKnee = tiltedAnkle.toMutableList().also { it[PoseIdx.R_ANKLE] = Landmark(0f, 0f, 0f) }
+        assertEquals('K', plankMetrics(withKnee, aspect)!!.lower)
+        assertEquals(gradePlank(tiltedAnkle, aspect), gradePlank(withKnee, aspect))
+    }
+
+    @Test fun aPerfectPlankMustStayInTheGreenZone() {
+        val target = lockTarget(tiltedAnkle, aspect)!!
+        assertEquals(PlankGrade.PERFECT, gradePlank(tiltedAnkle, aspect, target = target))
+        // the hips lift well out of the zone, though the arms and the hip angle still look fine
+        val lifted = tiltedAnkle.toMutableList().also { it[PoseIdx.R_HIP] = Landmark(0.270f, 0.50f, 0.52f) }
+        val grade = gradePlank(lifted, aspect, target = target)
+        assertTrue(grade != PlankGrade.PERFECT, "grade $grade")
+    }
+}

@@ -10,7 +10,11 @@ import kotlin.math.hypot
  *
  * Endpoints are normalised image coordinates; [halfWidth] is in image-height units (so it's aspect independent).
  */
-data class PlankTarget(val ax: Float, val ay: Float, val bx: Float, val by: Float, val halfWidth: Float) {
+data class PlankTarget(
+    val ax: Float, val ay: Float, val bx: Float, val by: Float, val halfWidth: Float,
+    /** 'L' or 'R': the side of the body it was locked from; the hip is judged on that same side. */
+    val side: Char = 'R',
+) {
     /** Distance of [p] from the target line as a multiple of the half-width: 0 = on the line, 1 = the zone's edge. */
     fun offset(p: Landmark, aspect: Float): Float {
         val x1 = ax * aspect; val y1 = ay
@@ -39,9 +43,19 @@ fun lockTarget(landmarks: List<Landmark>, aspect: Float = 1f, tol: PlankToleranc
     } else {
         j.lower.x to j.lower.y
     }
-    return PlankTarget(s.x, s.y, bx, by, halfWidth = 0.25f * torso)
+    return PlankTarget(s.x, s.y, bx, by, halfWidth = 0.25f * torso, side = if (j.left) 'L' else 'R')
 }
 
-/** The hip of the better-seen side, for judging it against a [PlankTarget]. */
-fun plankHip(landmarks: List<Landmark>, tol: PlankTolerances = PlankTolerances()): Landmark? =
-    pickJoints(landmarks, tol.minVisibility, tol.offFrameMinVisibility, tol.offFrameMargin)?.hip
+/**
+ * The hip to judge against a [PlankTarget]. Pass the target's [side] so it is the same side the target was locked
+ * from: the better-seen side can flip from frame to frame, and the two hips sit apart in the image, so judging the
+ * other one made a steady plank look like it had left the zone. Falls back to the better-seen side's hip.
+ */
+fun plankHip(landmarks: List<Landmark>, tol: PlankTolerances = PlankTolerances(), side: Char? = null): Landmark? {
+    if (landmarks.size < PoseIdx.COUNT) return null
+    if (side != null) {
+        val hip = landmarks[if (side == 'L') PoseIdx.L_HIP else PoseIdx.R_HIP]
+        if (hip.visibility >= tol.minVisibility) return hip
+    }
+    return pickJoints(landmarks, tol.minVisibility, tol.offFrameMinVisibility, tol.offFrameMargin)?.hip
+}

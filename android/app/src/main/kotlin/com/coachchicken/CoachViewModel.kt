@@ -211,7 +211,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
             val before = _state.value
             if (!before.cameraOn || (before.phase != Phase.READY && before.phase != Phase.PLANKING)) return@launch
             val now = SystemClock.elapsedRealtime()
-            val grade = if (landmarks == null) PlankGrade.NO_BODY else gradePlank(landmarks, aspect)
+            val grade = if (landmarks == null) PlankGrade.NO_BODY else gradePlank(landmarks, aspect, target = target)
             val isPlank = grade.reading == PoseReading.PLANK
             val event = tracker.update(now, grade.reading)
             val auraNow = aura.update(now, grade == PlankGrade.PERFECT)
@@ -223,7 +223,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
             } else if (!isPlank && !targetFrozen && tracker.smoothed < 0.3f) {
                 target = null
             }
-            val hip = landmarks?.let { plankHip(it) }
+            val hip = landmarks?.let { plankHip(it, side = target?.side) }
             val offset = if (target != null && hip != null) target!!.offset(hip, aspect) else null
 
             poseLog.addFrame(cameraMs(), before.phase.name, landmarks, aspect, grade, tracker.smoothed, auraNow, offset)

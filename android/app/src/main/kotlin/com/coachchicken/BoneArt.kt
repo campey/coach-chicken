@@ -104,6 +104,13 @@ private fun DrawScope.bone(a: Offset, b: Offset, width: Float, knob: Float, seed
     )
 }
 
+/** A bone drawn as a plain thick line: an ink stroke with the fill colour on top. */
+private fun DrawScope.thinBone(a: Offset, b: Offset, width: Float, pal: BonePalette, alpha: Float, inkW: Float) {
+    val w = max(width, 2.5.dp.toPx())
+    drawLine(pal.ink.copy(alpha = alpha), a, b, strokeWidth = w + inkW * 2, cap = StrokeCap.Round)
+    drawLine(pal.fill.copy(alpha = alpha), a, b, strokeWidth = w, cap = StrokeCap.Round)
+}
+
 /**
  * The whole skeleton, hand-drawn: spine (vertebrae), ribs, pelvis, and for each arm a humerus with a radius
  * and ulna, and for each leg a femur with a tibia and fibula. The far side of the body is dimmer and thinner.
@@ -127,19 +134,19 @@ internal fun DrawScope.drawBoneSkeleton(lms: List<Landmark>, at: (Landmark) -> O
         val w = max(torso * 0.035f, 2.5.dp.toPx()) * k
         val knob = max(torso * 0.05f, 4.dp.toPx()) * k
         if (vis(sho) && vis(elb)) bone(pos(sho), pos(elb), w * 1.1f, knob, seed, pal, alpha, inkW)
-        if (vis(elb) && vis(wri)) {
+        if (vis(elb) && vis(wri)) { // radius and ulna: just two thin inked lines
             val e = pos(elb); val wr = pos(wri)
             val d = wr - e; val len = d.getDistance().coerceAtLeast(1f); val n = Offset(-d.y / len, d.x / len)
-            val o = w * 0.8f
-            bone(e + n * o, wr - n * (o * 0.4f), w * 0.55f, knob * 0.6f, seed + 1, pal, alpha, inkW) // radius
-            bone(e - n * o, wr + n * (o * 0.4f), w * 0.55f, knob * 0.6f, seed + 2, pal, alpha, inkW) // ulna
+            val o = w * 0.55f
+            thinBone(e + n * o, wr + n * (o * 0.6f), w * 0.32f, pal, alpha, inkW)
+            thinBone(e - n * o, wr - n * (o * 0.6f), w * 0.32f, pal, alpha, inkW)
         }
         if (vis(hip) && vis(kne)) bone(pos(hip), pos(kne), w * 1.4f, knob * 1.2f, seed + 3, pal, alpha, inkW) // femur
-        if (vis(kne) && vis(ank)) {
+        if (vis(kne) && vis(ank)) { // tibia and fibula: the same simple lines
             val kn = pos(kne); val an = pos(ank)
             val d = an - kn; val len = d.getDistance().coerceAtLeast(1f); val n = Offset(-d.y / len, d.x / len)
-            bone(kn + n * (w * 0.5f), an + n * (w * 0.3f), w * 1.0f, knob * 0.9f, seed + 4, pal, alpha, inkW)  // tibia
-            bone(kn - n * (w * 0.9f), an - n * (w * 0.7f), w * 0.5f, knob * 0.5f, seed + 5, pal, alpha, inkW)  // fibula
+            thinBone(kn + n * (w * 0.5f), an + n * (w * 0.35f), w * 0.5f, pal, alpha, inkW)
+            thinBone(kn - n * (w * 0.5f), an - n * (w * 0.35f), w * 0.3f, pal, alpha, inkW)
         }
     }
 
@@ -153,30 +160,33 @@ internal fun DrawScope.drawBoneSkeleton(lms: List<Landmark>, at: (Landmark) -> O
         val axis = pelvis - neck
         val u = axis / axis.getDistance().coerceAtLeast(1f)
         val perp = Offset(-u.y, u.x)
-        // the ribs hang towards where the elbows are (towards the floor in a plank)
+        // the ribs hang towards where the elbows are (towards the floor in a plank): that is the front of the body,
+        // so the spine, seen from the side, runs along the opposite edge: the back
         val elbow = listOf(13, 14).filter(::vis).map(::pos).firstOrNull()
         val side = if (elbow != null && (elbow - neck).let { it.x * perp.x + it.y * perp.y } < 0f) -perp else perp
+        val backOffset = side * (-torso * 0.13f)
+        val spineTop = neck + backOffset
         val ribW = max(torso * 0.022f, 3.dp.toPx())
         for (k in 0 until 5) {
             val t = 0.10f + 0.10f * k
-            val p = neck + axis * t
-            val reach = torso * (0.15f + 0.10f * sin(PI * (k + 0.5) / 5).toFloat())
+            val p = spineTop + axis * t
+            val reach = torso * (0.15f + 0.10f * sin(PI * (k + 0.5) / 5).toFloat()) + torso * 0.13f // round to the front
             val tip = p + side * reach + u * (torso * 0.05f)
             val ctrl = p + side * (reach * 0.95f) - u * (torso * 0.01f)
             val rib = Path().apply { moveTo(p.x, p.y); quadraticBezierTo(ctrl.x, ctrl.y, tip.x, tip.y) }
             drawPath(rib, pal.ink, style = Stroke(width = ribW + inkW * 2, cap = StrokeCap.Round))
             drawPath(rib, pal.fill, style = Stroke(width = ribW, cap = StrokeCap.Round))
         }
-        // vertebrae, small at the neck and bigger towards the pelvis
+        // vertebrae along the back, small at the neck and bigger towards the pelvis
         val count = 9
         for (i in 0 until count) {
             val t = (i + 0.5f) / count
-            val c = neck + axis * t
+            val c = spineTop + axis * t
             val r = torso * (0.028f + 0.030f * t)
             inked(listOf(blob(c, r * 1.25f, r, atan2f(u.y, u.x), 900 + i, 8)), pal, 1f, inkW)
         }
         // pelvis: a flared bowl across the end of the spine
-        val pc = pelvis
+        val pc = pelvis + backOffset * 0.5f // the pelvis sits against the base of the spine
         fun pp(x: Float, y: Float) = pc + u * (x * torso) + perp * (y * torso)
         val pts = listOf(
             -0.06f to -0.17f, 0.00f to -0.19f, 0.06f to -0.14f, 0.12f to -0.07f, 0.14f to 0f, 0.12f to 0.07f,

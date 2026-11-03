@@ -49,7 +49,9 @@ data class PlankTolerances(
     val okHipDeg: Double = 130.0,
     val okElbowDrop: Double = 0.10,
     val okElbowOffset: Double = 0.9,
-    val perfectBodyDeg: Double = 12.0,
+    // PERFECT deliberately has no body-angle limit: that angle is measured against the camera's horizon, so a phone
+    // propped at a slight tilt (one real run read a straight plank as 12-17 degrees) must not cost a perfect grade.
+    // Perfect is about the shape of the body (straight hips, forearm propped) and staying in the green zone.
     val perfectHipDeg: Double = 160.0,
     val perfectElbowDrop: Double = 0.30,
     val perfectElbowOffset: Double = 0.45,
@@ -147,22 +149,26 @@ fun plankMetrics(
     )
 }
 
-/** Grades already-measured [PlankMetrics] (visibility is checked by the caller). */
-fun gradeMetrics(m: PlankMetrics, tol: PlankTolerances = PlankTolerances()): PlankGrade {
+/**
+ * Grades already-measured [PlankMetrics] (visibility is checked by the caller). [targetOffset] is how far the hip is
+ * from the green goal zone (1 = its edge); when given, a perfect plank must be inside the zone.
+ */
+fun gradeMetrics(m: PlankMetrics, tol: PlankTolerances = PlankTolerances(), targetOffset: Float? = null): PlankGrade {
     val ok = m.bodyAngleDeg <= tol.okBodyDeg &&
         m.hipAngleDeg >= tol.okHipDeg &&
         m.elbowDropRatio >= tol.okElbowDrop &&
         m.elbowOffsetRatio <= tol.okElbowOffset
     if (!ok) return PlankGrade.NOT_PLANK
-    val perfect = m.bodyAngleDeg <= tol.perfectBodyDeg &&
-        m.hipAngleDeg >= tol.perfectHipDeg &&
+    val perfect = m.hipAngleDeg >= tol.perfectHipDeg &&
         m.elbowDropRatio >= tol.perfectElbowDrop &&
-        m.elbowOffsetRatio <= tol.perfectElbowOffset
+        m.elbowOffsetRatio <= tol.perfectElbowOffset &&
+        (targetOffset == null || targetOffset <= 1f)
     return if (perfect) PlankGrade.PERFECT else PlankGrade.OK
 }
 
 /**
- * Is this a side-on plank, and how good? Uses whichever side of the body the camera sees best.
+ * Is this a side-on plank, and how good? Uses whichever side of the body the camera sees best. With a [target] (the green
+ * goal zone), a perfect plank must also keep its hip inside it.
  *  - the shoulder-to-ankle line is near horizontal (to the knee, or just the hip, when the legs are out of frame),
  *  - the body is straight at the hip (no sagging or piking),
  *  - the upper arm props the shoulder up: the elbow sits well below the shoulder, roughly underneath it.
@@ -170,11 +176,17 @@ fun gradeMetrics(m: PlankMetrics, tol: PlankTolerances = PlankTolerances()): Pla
  *
  * [aspect] is image width / height, so angles are measured in true proportions, not normalised ones.
  */
-fun gradePlank(landmarks: List<Landmark>, aspect: Float = 1f, tol: PlankTolerances = PlankTolerances()): PlankGrade {
+fun gradePlank(
+    landmarks: List<Landmark>,
+    aspect: Float = 1f,
+    tol: PlankTolerances = PlankTolerances(),
+    target: PlankTarget? = null,
+): PlankGrade {
     val m = plankMetrics(landmarks, aspect, tol.minVisibility, tol.offFrameMinVisibility, tol.offFrameMargin)
         ?: return PlankGrade.NO_BODY
     if (m.minVisibility < tol.minVisibility) return PlankGrade.NO_BODY
-    return gradeMetrics(m, tol)
+    val offset = target?.let { t -> plankHip(landmarks, tol, t.side)?.let { t.offset(it, aspect) } }
+    return gradeMetrics(m, tol, offset)
 }
 
 /** [gradePlank] collapsed to "is it a plank at all" (OK or PERFECT). */

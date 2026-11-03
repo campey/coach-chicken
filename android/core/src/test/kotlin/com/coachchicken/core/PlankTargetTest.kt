@@ -68,4 +68,23 @@ class PlankTargetTest {
         assertNull(lockTarget(emptyList()))
         assertNotNull(lockTarget(pose()))
     }
+
+    @Test fun theTargetRemembersWhichSideItWasLockedFrom() {
+        val l = pose(); l[PoseIdx.R_SHOULDER] = Landmark(0.25f, 0.5f, 0.2f)
+        assertEquals('L', lockTarget(l)!!.side)
+    }
+
+    @Test fun theHipIsJudgedOnTheTargetsSideEvenIfTheBetterSeenSideFlips() {
+        // locked from the left side; later the right side becomes the better-seen one and its hip sits elsewhere
+        val locked = pose()
+        val target = lockTarget(locked)!!
+        assertEquals('L', target.side)
+        val flipped = pose().also {
+            it[PoseIdx.R_SHOULDER] = Landmark(0.25f, 0.5f, 1f); it[PoseIdx.R_ELBOW] = Landmark(0.25f, 0.62f, 1f)
+            it[PoseIdx.R_HIP] = Landmark(0.5f, 0.80f, 1f); it[PoseIdx.R_ANKLE] = Landmark(0.8f, 0.58f, 1f)
+            it[PoseIdx.L_SHOULDER] = Landmark(0.25f, 0.5f, 0.6f)
+        }
+        assertEquals(0.54f, plankHip(flipped, side = target.side)!!.y) // the left hip, not the right one at y=0.80
+        assertEquals(0.80f, plankHip(flipped)!!.y)                    // whereas the better-seen side is now the right
+    }
 }
