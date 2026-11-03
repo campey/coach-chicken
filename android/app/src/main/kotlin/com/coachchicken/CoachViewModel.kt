@@ -9,7 +9,7 @@ import com.coachchicken.core.Cue
 import com.coachchicken.core.PlankTimeline
 import com.coachchicken.core.SessionRecord
 import com.coachchicken.core.buildCalendar
-import com.coachchicken.core.trainedDays
+import com.coachchicken.core.completedSessionTimes
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,7 +43,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadCalendar(): List<List<CalendarDay>> {
         val zone = ZoneId.systemDefault()
-        return buildCalendar(LocalDate.now(zone), trainedDays(store.readAll(), zone))
+        return buildCalendar(LocalDate.now(zone), completedSessionTimes(store.readAll(), zone))
     }
 
     fun start() {

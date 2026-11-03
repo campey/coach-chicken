@@ -15,12 +15,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.coachchicken.core.CalendarDay
+import com.coachchicken.core.clockMark
+import kotlin.math.cos
+import kotlin.math.sin
 
 private val GoldLight = Color(0xFFFFE27A)
 private val GoldDark = Color(0xFFC9900C)
@@ -62,6 +67,19 @@ private fun DayCell(day: CalendarDay, modifier: Modifier) {
                     size = Size(size.width - stroke, size.height - stroke),
                     style = Stroke(width = stroke),
                 )
+                // One mark per session, placed like an hour hand on a 12-hour dial just inside the ring.
+                val inset = stroke + 5.dp.toPx()
+                val rx = size.width / 2 - inset
+                val ry = size.height / 2 - inset
+                day.sessions.forEach { time ->
+                    val mark = clockMark(time)
+                    val a = Math.toRadians(mark.angleDegrees.toDouble())
+                    val at = Offset(
+                        center.x + rx * sin(a).toFloat(),
+                        center.y - ry * cos(a).toFloat(),
+                    )
+                    drawSessionMark(at, mark.isAm)
+                }
             }
         }
         Text(
@@ -75,4 +93,25 @@ private fun DayCell(day: CalendarDay, modifier: Modifier) {
             },
         )
     }
+}
+
+/** Horizontal line with a half-disc above it for AM (sunrise) or below it for PM (sunset). */
+private fun DrawScope.drawSessionMark(at: Offset, isAm: Boolean) {
+    val r = 2.5.dp.toPx()
+    val line = 1.5.dp.toPx()
+    drawArc(
+        color = GoldDark,
+        startAngle = if (isAm) 180f else 0f, // 180..360 is the top half, 0..180 the bottom half
+        sweepAngle = 180f,
+        useCenter = true,
+        topLeft = Offset(at.x - r, at.y - r),
+        size = Size(2 * r, 2 * r),
+    )
+    drawLine(
+        color = GoldDark,
+        start = Offset(at.x - r - 1.dp.toPx(), at.y),
+        end = Offset(at.x + r + 1.dp.toPx(), at.y),
+        strokeWidth = line,
+        cap = StrokeCap.Round,
+    )
 }

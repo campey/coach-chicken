@@ -2,6 +2,7 @@ package com.coachchicken.core
 
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 
 data class SessionRecord(
@@ -37,6 +38,9 @@ object SessionCsv {
     fun parseAll(text: String): List<SessionRecord> = text.lineSequence().mapNotNull(::parse).toList()
 }
 
-/** Days (in [zone]) with at least one completed session. */
-fun trainedDays(records: List<SessionRecord>, zone: ZoneId): Set<LocalDate> =
-    records.filter { it.completed }.map { it.startedAt.atZone(zone).toLocalDate() }.toSet()
+/** Local start times of completed sessions, grouped by local day (in [zone]), each day's list sorted. */
+fun completedSessionTimes(records: List<SessionRecord>, zone: ZoneId): Map<LocalDate, List<LocalTime>> =
+    records.filter { it.completed }
+        .map { it.startedAt.atZone(zone) }
+        .groupBy({ it.toLocalDate() }, { it.toLocalTime() })
+        .mapValues { (_, times) -> times.sorted() }
