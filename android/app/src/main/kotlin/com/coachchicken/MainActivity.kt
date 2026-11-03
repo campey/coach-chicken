@@ -30,9 +30,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -66,7 +68,9 @@ class MainActivity : ComponentActivity() {
                             poseLogText = vm::poseLogText,
                         )
                     } else {
-                        CoachScreen(state, vm::start, onCamera, { vm.cancel() }, vm::dismissDone)
+                        val clipboard = LocalClipboardManager.current
+                        val copyLog = if (vm.hasPoseLog()) ({ clipboard.setText(AnnotatedString(vm.poseLogText())) }) else null
+                        CoachScreen(state, vm::start, onCamera, { vm.cancel() }, vm::dismissDone, copyLog)
                     }
                 }
             }
@@ -81,7 +85,14 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun CoachScreen(state: UiState, onStart: () -> Unit, onCamera: () -> Unit, onStop: () -> Unit, onDone: () -> Unit) {
+private fun CoachScreen(
+    state: UiState,
+    onStart: () -> Unit,
+    onCamera: () -> Unit,
+    onStop: () -> Unit,
+    onDone: () -> Unit,
+    onCopyLog: (() -> Unit)?,
+) {
     KeepScreenOn(state.phase == Phase.RUNNING)
     Column(
         Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
@@ -103,6 +114,9 @@ private fun CoachScreen(state: UiState, onStart: () -> Unit, onCamera: () -> Uni
                 } else {
                     Button(onStart, Modifier.fillMaxWidth()) { Text("Start plank") }
                     OutlinedButton(onCamera, Modifier.fillMaxWidth()) { Text("Auto-start with camera") }
+                }
+                if (onCopyLog != null) {
+                    OutlinedButton(onCopyLog, Modifier.fillMaxWidth()) { Text("Copy pose log") }
                 }
             }
         }

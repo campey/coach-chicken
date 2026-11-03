@@ -111,6 +111,9 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
     /** Everything the camera saw since camera mode was last entered, ready to paste. */
     fun poseLogText(): String = poseLog.render()
 
+    /** True once the camera has recorded anything this run, so the log can be copied after the session ends. */
+    fun hasPoseLog(): Boolean = poseLog.size > 0
+
     fun enterCamera() {
         tracker.reset()
         cameraStartedAt = SystemClock.elapsedRealtime()
