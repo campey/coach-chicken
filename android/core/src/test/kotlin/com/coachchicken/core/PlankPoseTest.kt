@@ -197,6 +197,13 @@ class GradingTest {
 
     @Test fun aShallowElbowDropIsOk() = assertEquals(PlankGrade.OK, gradePlank(pose(elbowY = 0.54f)))
 
+    @Test fun aWobblingElbowStillGradesPerfectButLyingFlatDoesNot() {
+        // elbow drop 0.24 of the torso length: the sleeve-wobble case from a real run
+        assertEquals(PlankGrade.PERFECT, gradePlank(pose(elbowY = 0.50f + 0.24f * 0.253f)))
+        // elbow level with the shoulder (lying flat, no prop) is not a plank at all
+        assertEquals(PlankGrade.NOT_PLANK, gradePlank(pose(elbowY = 0.50f)))
+    }
+
     @Test fun veryBentIsNotAPlank() = assertEquals(PlankGrade.NOT_PLANK, gradePlank(pose(hipY = 0.82f)))
 
     @Test fun gradeMapsToReading() {

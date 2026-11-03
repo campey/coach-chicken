@@ -74,4 +74,55 @@ class PerfectRunReplayTest {
     }
 
     private val Pair<Long, Event>.t get() = first
+
+}
+
+/**
+ * A second real landscape run: a 63s plank, PERFECT on ~94% of the sampled rows. The rest were isolated OK frames
+ * (the elbow landmark wobbling) scattered through the plank, then the hips lifting at the end. The log's aura dipped
+ * by only ~6% at each blip, which is one ~33ms camera frame, so the replay runs at camera frame rate with each blip
+ * a single frame. The aura must ride through them and nothing may fire until the real lapse.
+ */
+class PerfectRunWithBlipsReplayTest {
+    private val stepMs = 33L
+    private val blips = listOf(39_900L, 43_700L, 49_200L, 51_350L, 56_500L, 57_050L, 64_050L, 71_400L, 71_650L, 72_650L)
+
+    private fun gradeAt(t: Long): PlankGrade = when {
+        t < 8_100 -> PlankGrade.NOT_PLANK
+        t < 9_000 -> PlankGrade.OK
+        t < 73_100 -> if (blips.any { it / stepMs == t / stepMs }) PlankGrade.OK else PlankGrade.PERFECT
+        t < 73_900 -> PlankGrade.OK          // the hips lift: out of the green zone, still planking
+        else -> PlankGrade.NOT_PLANK
+    }
+
+    private val events = mutableListOf<Pair<Long, PlankTracker.Event>>()
+    private val tracker = PlankTracker()
+    private val aura = AuraMeter()
+    private var minAuraAfterBuildUp = 1f
+
+    init {
+        var t = 0L
+        while (t <= 77_500) {
+            val g = gradeAt(t)
+            tracker.update(t, g.reading)?.let { events += t to it }
+            val a = aura.update(t, g == PlankGrade.PERFECT)
+            if (t in 20_000..71_000) minAuraAfterBuildUp = minOf(minAuraAfterBuildUp, a)
+            t += stepMs
+        }
+    }
+
+    @Test fun scatteredOkBlipsNeverRaiseAnEvent() {
+        assertEquals(listOf(PlankTracker.Event.STARTED, PlankTracker.Event.WARNING, PlankTracker.Event.ENDED), events.map { it.second }, "events $events")
+    }
+
+    @Test fun theAuraRidesThroughTheBlips() {
+        assertTrue(minAuraAfterBuildUp > 0.85f, "aura dipped to $minAuraAfterBuildUp")
+    }
+
+    @Test fun theEndIsBackDatedToTheLastHeldFrameAndEarnsTheEgg() {
+        val lostAt = tracker.lastEndedLostAtMs!!
+        val started = events.first { it.second == PlankTracker.Event.STARTED }.first
+        assertTrue(lostAt in 72_800..74_200, "lapse began $lostAt")
+        assertTrue(PlankTimeline().isComplete(lostAt - started), "held ${lostAt - started}ms")
+    }
 }

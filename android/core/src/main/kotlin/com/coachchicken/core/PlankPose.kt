@@ -53,7 +53,9 @@ data class PlankTolerances(
     // propped at a slight tilt (one real run read a straight plank as 12-17 degrees) must not cost a perfect grade.
     // Perfect is about the shape of the body (straight hips, forearm propped) and staying in the green zone.
     val perfectHipDeg: Double = 160.0,
-    val perfectElbowDrop: Double = 0.30,
+    // 0.30 originally; a real run showed single-frame dips to 0.20-0.29 (a sleeve moving the elbow landmark) on a
+    // steady plank, each of which dented the aura. Lying flat reads about 0.0, so 0.20 still tells them apart.
+    val perfectElbowDrop: Double = 0.20,
     val perfectElbowOffset: Double = 0.45,
 )
 
