@@ -1,9 +1,13 @@
 package com.coachchicken
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -26,10 +30,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 class MainActivity : ComponentActivity() {
@@ -42,7 +48,26 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(Modifier.fillMaxSize()) {
                     val state by vm.state.collectAsStateWithLifecycle()
-                    CoachScreen(state, vm::start, vm::cancel, vm::dismissDone)
+                    val context = LocalContext.current
+                    val askCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                        if (granted) vm.enterCamera()
+                    }
+                    val onCamera = {
+                        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                        if (granted) vm.enterCamera() else askCamera.launch(Manifest.permission.CAMERA)
+                    }
+                    if (state.cameraMode && state.phase != Phase.DONE) {
+                        CameraScreen(
+                            state = state,
+                            onPose = vm::onPose,
+                            onFlip = vm::flipCamera,
+                            onStop = { vm.cancel() },
+                            onClose = vm::exitCamera,
+                            poseLogText = vm::poseLogText,
+                        )
+                    } else {
+                        CoachScreen(state, vm::start, onCamera, { vm.cancel() }, vm::dismissDone)
+                    }
                 }
             }
         }
@@ -56,7 +81,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun CoachScreen(state: UiState, onStart: () -> Unit, onStop: () -> Unit, onDone: () -> Unit) {
+private fun CoachScreen(state: UiState, onStart: () -> Unit, onCamera: () -> Unit, onStop: () -> Unit, onDone: () -> Unit) {
     KeepScreenOn(state.phase == Phase.RUNNING)
     Column(
         Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
@@ -77,6 +102,7 @@ private fun CoachScreen(state: UiState, onStart: () -> Unit, onStop: () -> Unit,
                     Button(onDone, Modifier.fillMaxWidth()) { Text("OK") }
                 } else {
                     Button(onStart, Modifier.fillMaxWidth()) { Text("Start plank") }
+                    OutlinedButton(onCamera, Modifier.fillMaxWidth()) { Text("Auto-start with camera") }
                 }
             }
         }
@@ -84,7 +110,7 @@ private fun CoachScreen(state: UiState, onStart: () -> Unit, onStop: () -> Unit,
 }
 
 @Composable
-private fun KeepScreenOn(on: Boolean) {
+internal fun KeepScreenOn(on: Boolean) {
     val view = LocalView.current
     DisposableEffect(on) {
         view.keepScreenOn = on
@@ -93,7 +119,7 @@ private fun KeepScreenOn(on: Boolean) {
 }
 
 /** Seconds shown rounded up, so the display reads 1:00 at the start and 0:00 only at the end. */
-private fun formatTime(remainingMs: Long): String {
+internal fun formatTime(remainingMs: Long): String {
     val s = ((remainingMs + 999) / 1000).toInt()
     return "%d:%02d".format(s / 60, s % 60)
 }

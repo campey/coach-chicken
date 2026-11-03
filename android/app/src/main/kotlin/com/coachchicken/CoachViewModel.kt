@@ -5,6 +5,11 @@ import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.coachchicken.core.CalendarDay
+import com.coachchicken.core.Landmark
+import com.coachchicken.core.PlankTracker
+import com.coachchicken.core.PoseLog
+import com.coachchicken.core.PoseReading
+import com.coachchicken.core.readPlank
 import com.coachchicken.core.Cue
 import com.coachchicken.core.PlankTimeline
 import com.coachchicken.core.SessionRecord
@@ -15,6 +20,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -23,16 +29,30 @@ import java.time.ZoneId
 
 enum class Phase { IDLE, RUNNING, DONE }
 
+/** The latest camera reading, for drawing the skeleton and the status line. */
+data class PoseUi(
+    val landmarks: List<Landmark>,
+    val aspect: Float,
+    val reading: PoseReading,
+    val holdProgress: Float,
+)
+
 data class UiState(
     val phase: Phase = Phase.IDLE,
     val remainingMs: Long = PlankTimeline.DEFAULT_DURATION_MS,
     val calendar: List<List<CalendarDay>> = emptyList(),
+    val cameraMode: Boolean = false,
+    val frontCamera: Boolean = true,
+    val pose: PoseUi? = null,
 )
 
 class CoachViewModel(app: Application) : AndroidViewModel(app) {
     private val timeline = PlankTimeline()
     private val store = SessionStore(app)
     private val sounds = SoundPlayer(app)
+    private val tracker = PlankTracker()
+    private val poseLog = PoseLog()
+    private var cameraStartedAt = 0L
 
     private val _state = MutableStateFlow(UiState(calendar = loadCalendar()))
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -50,6 +70,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
         if (ticker != null) return
         startedAt = Instant.now()
         startedRealtime = SystemClock.elapsedRealtime()
+        poseLog.addEvent(cameraMs(), "SESSION_START")
         _state.value = _state.value.copy(phase = Phase.RUNNING, remainingMs = timeline.durationMs)
         sounds.startQuietLoop()
         ticker = viewModelScope.launch {
@@ -71,23 +92,79 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Stop early (button) or because the app left the foreground. Logged as incomplete. */
-    fun cancel() {
-        if (ticker == null) return
+    /**
+     * Stop early (button), because the app left the foreground, or because the camera saw you get up.
+     * Logged as incomplete. Leaves camera mode unless [keepCamera] (used when the camera ended it).
+     */
+    fun cancel(keepCamera: Boolean = false) {
+        if (ticker == null) {
+            if (!keepCamera) exitCamera()
+            return
+        }
         val elapsed = SystemClock.elapsedRealtime() - startedRealtime
         ticker?.cancel()
-        finish(completed = false, elapsedMs = elapsed, goTo = Phase.IDLE)
+        finish(completed = false, elapsedMs = elapsed, goTo = Phase.IDLE, keepCamera = keepCamera)
+    }
+
+    private fun cameraMs() = SystemClock.elapsedRealtime() - cameraStartedAt
+
+    /** Everything the camera saw since camera mode was last entered, ready to paste. */
+    fun poseLogText(): String = poseLog.render()
+
+    fun enterCamera() {
+        tracker.reset()
+        cameraStartedAt = SystemClock.elapsedRealtime()
+        poseLog.clear("camera=${if (_state.value.frontCamera) "front" else "back"} app=${BuildConfig.VERSION_NAME}")
+        _state.update { it.copy(cameraMode = true, pose = null) }
+    }
+
+    fun exitCamera() {
+        _state.update { it.copy(cameraMode = false, pose = null) }
+    }
+
+    fun flipCamera() {
+        poseLog.addEvent(cameraMs(), "FLIP_CAMERA now=${if (_state.value.frontCamera) "back" else "front"}")
+        _state.update { it.copy(frontCamera = !it.frontCamera, pose = null) }
+    }
+
+    /** Called from the camera analysis thread for every frame; hops to the main thread. */
+    fun onPose(landmarks: List<Landmark>?, aspect: Float) {
+        viewModelScope.launch {
+            if (!_state.value.cameraMode) return@launch
+            val now = SystemClock.elapsedRealtime()
+            val reading = if (landmarks == null) PoseReading.NO_BODY else readPlank(landmarks, aspect)
+            poseLog.addFrame(cameraMs(), _state.value.phase.name, landmarks, aspect, reading)
+            when (tracker.update(now, reading)) {
+                PlankTracker.Event.STARTED -> {
+                    poseLog.addEvent(cameraMs(), "TRACKER_STARTED")
+                    if (_state.value.phase == Phase.IDLE) start()
+                }
+                PlankTracker.Event.ENDED -> {
+                    poseLog.addEvent(cameraMs(), "TRACKER_ENDED")
+                    if (_state.value.phase == Phase.RUNNING) cancel(keepCamera = true)
+                }
+                null -> Unit
+            }
+            _state.update { it.copy(pose = PoseUi(landmarks.orEmpty(), aspect, reading, tracker.holdProgress(now))) }
+        }
     }
 
     fun dismissDone() {
         _state.value = _state.value.copy(phase = Phase.IDLE, remainingMs = timeline.durationMs)
     }
 
-    private fun finish(completed: Boolean, elapsedMs: Long, goTo: Phase = Phase.DONE) {
+    private fun finish(completed: Boolean, elapsedMs: Long, goTo: Phase = Phase.DONE, keepCamera: Boolean = false) {
         ticker = null
         sounds.stopQuietLoop()
         store.append(SessionRecord("plank", startedAt, elapsedMs, completed))
-        _state.value = UiState(phase = goTo, remainingMs = timeline.durationMs, calendar = loadCalendar())
+        poseLog.addEvent(cameraMs(), "SESSION_END completed=$completed elapsedMs=$elapsedMs")
+        _state.value = UiState(
+            phase = goTo,
+            remainingMs = timeline.durationMs,
+            calendar = loadCalendar(),
+            cameraMode = keepCamera,
+            frontCamera = _state.value.frontCamera,
+        )
     }
 
     override fun onCleared() {
