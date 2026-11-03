@@ -17,7 +17,7 @@ from pathlib import Path
 YEL, YEL_D, ORANGE = "#FFD43B", "#F2B705", "#F08C00"
 RED, RED_D, DARK, MOUTH = "#E03131", "#A61E1E", "#2B2B2B", "#7A1F1F"
 CX = 24.5                 # body centre line
-MOUTH_C = (30.8, 18.0)    # centre of the open mouth; the rays fan out from here
+MOUTH_C = (35.5, 19.6)    # middle of the beak opening; the rays fan out from here
 
 
 def circle(cx, cy, r):
@@ -43,9 +43,9 @@ def collar(y, hw):
 def rays():
     """Squeak rays fanning out of the mouth, longest straight ahead."""
     out = []
-    for deg, r2 in [(-52, 15.5), (-26, 17), (0, 19), (26, 17), (52, 15.5)]:
+    for deg, r2 in [(-52, 14.5), (-26, 16), (0, 17.5), (26, 16), (52, 14.5)]:
         a = math.radians(deg)
-        x1, y1 = MOUTH_C[0] + 8.5 * math.cos(a), MOUTH_C[1] + 8.5 * math.sin(a)
+        x1, y1 = MOUTH_C[0] + 6.5 * math.cos(a), MOUTH_C[1] + 6.5 * math.sin(a)
         x2, y2 = MOUTH_C[0] + r2 * math.cos(a), MOUTH_C[1] + r2 * math.sin(a)
         out.append(("stroke", f"M{x1:.1f},{y1:.1f} L{x2:.1f},{y2:.1f}", ORANGE, 1.7))
     return out
@@ -53,14 +53,15 @@ def rays():
 
 HEAD = [  # small head, three-quarter view turned to face right
     ("fill", ellipse(25.5, 13, 7, 6.8), YEL, 0),                                           # head
-    ("fill", ellipse(29, 16, 5, 6), YEL, 0),                                               # muzzle bulge
+    ("fill", ellipse(29.5, 16.5, 4, 5.5), YEL, 0),                                         # cheek
     ("fill", "M19,8 C17.5,5 16.5,2.5 17.5,0.5 C20.5,1.5 23.5,3.5 26,7.5 Z", RED, 0),       # crest: one swept-back blade
     ("fill", circle(23.8, 10.8, 3.3), DARK, 0), ("fill", circle(23.8, 10.8, 2.6), "#FFFFFF", 0),     # near eye
     ("fill", circle(29.6, 10.3, 2.9), DARK, 0), ("fill", circle(29.6, 10.3, 2.2), "#FFFFFF", 0),     # far eye
-    ("fill", circle(24.5, 11.6, 1.2), DARK, 0), ("fill", circle(30.1, 11.0, 1.05), DARK, 0),          # pupils look at the mouth
-    ("fill", ellipse(30.5, 17.5, 3.9, 4.8), ORANGE, 0),                                    # beak (an "O")
-    ("fill", ellipse(MOUTH_C[0], MOUTH_C[1], 2.4, 3.4), MOUTH, 0),                         # open mouth
-    ("fill", ellipse(MOUTH_C[0], MOUTH_C[1] + 1.9, 1.5, 1.1), RED, 0),                     # tongue
+    ("fill", circle(24.6, 11.7, 1.2), DARK, 0), ("fill", circle(30.2, 11.2, 1.05), DARK, 0),          # pupils look at the beak
+    ("fill", ellipse(27.8, 18.2, 5, 4.6), YEL, 0),                                         # jaw
+    ("fill", "M29,19 L38.6,15.8 L37.6,24 L28.5,22.4 Z", MOUTH, 0),                         # inside of the open mouth
+    ("fill", "M28,13.2 C32,12.6 36,13.6 38.8,15.7 C35.5,17.2 32.5,18 29,19 Z", ORANGE, 0),   # upper beak
+    ("fill", "M29,20.4 C33,20.8 35.8,21.9 37.9,24.1 C34.6,24.9 31.6,24.7 28.4,23.2 Z", ORANGE, 0),  # lower beak
 ]
 
 FULL_BODY = [
@@ -78,7 +79,7 @@ FULL_BODY = [
 HEAD_SHOT = [
     ("fill", "M21,18 L28,18 L30,32 L19,32 Z", YEL, 0),                                                 # neck stub
     ("fill", "M26.5,18 L28,18 L30,32 L27,32 Z", YEL_D, 0),
-] + collar(28.5, 8.5) + HEAD
+] + collar(28.5, 8.5) + HEAD + rays()
 
 
 def vd_paths(shapes, indent="    "):
@@ -100,8 +101,8 @@ def full_body_xml():
                      + vd_paths(FULL_BODY) + ["</vector>"]) + "\n"
 
 
-# Head shot spans roughly x 16..37, y 0.5..36 -> scale about its centre (26.5, 18) onto the 108 canvas centre.
-HS_SCALE, HS_TX, HS_TY = 2.0, 54 - 26.5 * 2.0, 54 - 18 * 2.0
+# Head shot (with rays) spans roughly x 16..53, y 0.5..36 -> scale about its centre (34.5, 18) onto the 108 canvas centre.
+HS_SCALE, HS_TX, HS_TY = 1.9, 54 - 34.5 * 1.9, 54 - 18 * 1.9
 
 
 def launcher_xml():
