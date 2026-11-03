@@ -62,7 +62,7 @@ jobs:
             echo "2. Open it and allow installing from your browser/file manager when asked."
             echo "3. Open **Coach Chicken**, tap **Start session**, allow the camera, prop the phone side-on, and plank."
             echo
-            echo "The camera is used on-device only; nothing is uploaded. The APK is about 33 MB because it bundles the pose-detection model."
+            echo "Pose detection runs entirely on the phone and the app does not send the camera feed anywhere. The APK is about 30 MB because it bundles the pose-detection model."
             if [ "$SIGNED" != "release" ]; then
               echo
               echo "> **Note:** this build is signed with a debug key. If a later release was built by a different machine, Android may refuse to update over it; uninstall first in that case."
