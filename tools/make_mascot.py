@@ -38,15 +38,16 @@ def collar(y, hw):
     ]
 
 
-HEAD = [
-    ("fill", ellipse(CX, 20, 13, 12), YEL, 0),                                             # head
-    ("fill", "M24,9 C22,2 26,1 28,5 C29,0 33,0 33,5 C35,2 38,4 36,9 Z", RED, 0),           # crest
-    ("fill", circle(24, 17.5, 5), DARK, 0), ("fill", circle(24, 17.5, 4), "#FFFFFF", 0),   # eyes
-    ("fill", circle(36, 17.5, 5), DARK, 0), ("fill", circle(36, 17.5, 4), "#FFFFFF", 0),
-    ("fill", circle(24.6, 18.2, 1.9), DARK, 0), ("fill", circle(35.4, 18.2, 1.9), DARK, 0),
-    ("fill", ellipse(CX, 27, 6.8, 7.4), ORANGE, 0),                                        # beak (an "O")
-    ("fill", ellipse(CX, 27.6, 4.2, 5.2), MOUTH, 0),                                       # open mouth
-    ("fill", ellipse(CX, 30.4, 2.6, 1.8), RED, 0),                                         # tongue
+HEAD = [  # three-quarter view, turned to face right (towards the squeak lines)
+    ("fill", ellipse(28.5, 20, 13, 12), YEL, 0),                                           # head
+    ("fill", ellipse(34, 23, 8, 9), YEL, 0),                                               # muzzle bulge
+    ("fill", "M19,11 C14,5 17,0 21,4 C22,-1 27,0 27,5 C30,2 33,5 30,10 Z", RED, 0),        # crest, swept back
+    ("fill", circle(27, 17, 4.8), DARK, 0), ("fill", circle(27, 17, 3.8), "#FFFFFF", 0),   # near eye
+    ("fill", circle(36, 16.3, 4.2), DARK, 0), ("fill", circle(36, 16.3, 3.2), "#FFFFFF", 0),  # far eye
+    ("fill", circle(28.2, 17.6, 1.8), DARK, 0), ("fill", circle(37, 16.9, 1.6), DARK, 0),
+    ("fill", ellipse(36, 27, 6.2, 7.4), ORANGE, 0),                                        # beak (an "O")
+    ("fill", ellipse(36.4, 27.6, 3.8, 5.2), MOUTH, 0),                                     # open mouth
+    ("fill", ellipse(36.4, 30.4, 2.4, 1.8), RED, 0),                                       # tongue
 ]
 
 SQUEAK_LINES = [
@@ -92,8 +93,8 @@ def full_body_xml():
                      + vd_paths(FULL_BODY) + ["</vector>"]) + "\n"
 
 
-# Head shot spans roughly x 17..43, y 2..45 -> scale 1.7 about its centre (30, 22) onto the 108 canvas centre.
-HS_SCALE, HS_TX, HS_TY = 1.7, 54 - 30 * 1.7, 54 - 22 * 1.7
+# Head shot spans roughly x 17..43, y 2..45 -> scale 1.7 about its centre (31, 22) onto the 108 canvas centre.
+HS_SCALE, HS_TX, HS_TY = 1.7, 54 - 31 * 1.7, 54 - 22 * 1.7
 
 
 def launcher_xml():
