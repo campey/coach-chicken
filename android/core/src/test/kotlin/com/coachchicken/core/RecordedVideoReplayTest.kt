@@ -26,15 +26,20 @@ class RecordedVideoReplayTest {
         }.toList()
     }
 
+    private val warnings = mutableListOf<Long>()
+
     private fun replay(): Triple<Long?, Long?, Long?> {
         val tracker = PlankTracker()
         var started: Long? = null
         var ended: Long? = null
+        warnings.clear()
         for (f in frames()) {
             val reading = readPlank(f.landmarks!!, aspect)
             when (tracker.update(f.tMs, reading)) {
                 PlankTracker.Event.STARTED -> started = started ?: f.tMs
                 PlankTracker.Event.ENDED -> ended = ended ?: f.tMs
+                PlankTracker.Event.WARNING -> warnings += f.tMs
+                PlankTracker.Event.RECOVERED -> Unit
                 null -> Unit
             }
         }
@@ -71,7 +76,13 @@ class RecordedVideoReplayTest {
         assertNotNull(ended)
         assertNotNull(lostAt)
         assertTrue(lostAt in 26_500..28_000, "lapse began at $lostAt")
-        assertTrue(ended in 28_000..30_000, "ended at $ended")
-        assertEquals(true, ended - lostAt >= 2_000)
+        assertTrue(ended in 29_500..31_500, "ended at $ended")
+        assertEquals(true, ended - lostAt >= 3_000)
+    }
+
+    @Test fun warnsOnceWhenGettingUpAndNeverDuringThePlank() {
+        replay()
+        assertEquals(1, warnings.size, "warnings at $warnings")
+        assertTrue(warnings.single() in 27_500..29_500, "warned at ${warnings.single()}")
     }
 }

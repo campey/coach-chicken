@@ -36,6 +36,10 @@ data class PoseUi(
     val aspect: Float,
     val reading: PoseReading,
     val holdProgress: Float,
+    /** While the plank is lapsing and has been warned about: how long until it ends, ms. Otherwise null. */
+    val endsInMs: Long? = null,
+    /** The camera-session clock, the same as the log's t_ms (shown on screen so a screen recording lines up). */
+    val logMs: Long = 0,
 )
 
 data class UiState(
@@ -84,7 +88,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
         if (_state.value.phase != Phase.HOME) return
         tracker.reset()
         cameraStartedAt = SystemClock.elapsedRealtime()
-        poseLog.clear("camera=${if (_state.value.frontCamera) "front" else "back"} on=$camera app=${BuildConfig.VERSION_NAME}")
+        poseLog.clear("camera=${if (_state.value.frontCamera) "front" else "back"} on=$camera app=${BuildConfig.VERSION_NAME} (t_ms is the on-screen t= clock)")
         _state.update { it.copy(phase = Phase.READY, elapsedMs = 0, cameraOn = camera, pose = null) }
     }
 
@@ -138,6 +142,8 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
         ticker?.cancel()
         ticker = null
         sounds.stopQuietLoop()
+        // A camera-detected end lets the warning finish on its own; any other end silences it.
+        if (endedAtRealtime == null) sounds.stopWarning()
         val now = SystemClock.elapsedRealtime()
         val elapsed = ((endedAtRealtime ?: now) - startedRealtime).coerceIn(0, now - startedRealtime)
         val completed = timeline.isComplete(elapsed)
@@ -180,6 +186,14 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
                     poseLog.addEvent(cameraMs(), "TRACKER_STARTED")
                     if (before.phase == Phase.READY) startPlank()
                 }
+                PlankTracker.Event.WARNING -> {
+                    poseLog.addEvent(cameraMs(), "TRACKER_WARNING")
+                    if (before.phase == Phase.PLANKING) sounds.startWarning()
+                }
+                PlankTracker.Event.RECOVERED -> {
+                    poseLog.addEvent(cameraMs(), "TRACKER_RECOVERED")
+                    sounds.stopWarning()
+                }
                 PlankTracker.Event.ENDED -> {
                     poseLog.addEvent(cameraMs(), "TRACKER_ENDED")
                     // The plank really ended when you first lost it, not when the grace period ran out.
@@ -189,7 +203,10 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
             }
             val after = _state.value
             if (after.cameraOn && (after.phase == Phase.READY || after.phase == Phase.PLANKING)) {
-                _state.update { it.copy(pose = PoseUi(landmarks.orEmpty(), aspect, reading, tracker.holdProgress(now))) }
+                val endsIn = if (tracker.isWarning) (tracker.endGraceMs - tracker.lapseMs(now)).coerceAtLeast(0) else null
+                _state.update {
+                    it.copy(pose = PoseUi(landmarks.orEmpty(), aspect, reading, tracker.holdProgress(now), endsIn, cameraMs()))
+                }
             }
         }
     }

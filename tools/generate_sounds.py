@@ -44,6 +44,28 @@ def squawk(dur=0.9):
     return out
 
 
+def bwaaak(dur=2.0):
+    """The warning: a long, building 'bwaaaak!' that rises in pitch, loudness, vibrato and roughness,
+    then snaps off on a hard 'k'. Length matches the grace period left after the warning starts."""
+    n = int(dur * RATE)
+    out, phase = [], 0.0
+    for i in range(n):
+        t = i / n
+        f = 300 + 700 * t ** 1.5 + (45 * t) * math.sin(2 * math.pi * (6 + 8 * t) * t * dur)
+        phase += 2 * math.pi * f / RATE
+        saw = (phase / math.pi) % 2 - 1
+        sq = 1.0 if math.sin(phase) > 0 else -1.0
+        body = 0.55 * saw + (0.15 + 0.35 * t) * sq + 0.25 * math.sin(2 * phase)
+        grit = (0.05 + 0.5 * t) * (rng.random() * 2 - 1)
+        env = min(1.0, i / (0.04 * RATE)) * (0.3 + 0.7 * t ** 1.3)
+        if t > 0.96:                                   # the 'k': a quick snap, mostly noise
+            k = (t - 0.96) / 0.04
+            env *= max(0.0, 1 - k)
+            grit += 0.8 * (rng.random() * 2 - 1)
+        out.append((body + grit) * env)
+    return out
+
+
 def mix(parts, min_sec=0.0):
     """parts: list of (start_sec, samples, gain); result is at least min_sec long."""
     total = max([int(min_sec * RATE)] + [int(s * RATE) + len(x) for s, x, _ in parts])
@@ -79,6 +101,7 @@ def main():
     loud = mix([(0.0, cluck(0.14, 1100, 420), 1.0), (0.2, cluck(0.12, 1000, 400), 0.9), (0.38, cluck(0.12, 950, 380), 0.8)])
     write("cluck_loud", loud, gain=1.0)
     write("squawk", squawk(), gain=1.0)
+    write("bwaaak", bwaaak(), gain=1.0)
 
 
 if __name__ == "__main__":

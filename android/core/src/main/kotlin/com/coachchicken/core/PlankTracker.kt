@@ -3,17 +3,21 @@ package com.coachchicken.core
 /**
  * Turns noisy per-frame [PoseReading]s into start/stop events.
  *  - Start: a plank must be held for [startHoldMs].
- *  - Stop: the plank must be lost for [endGraceMs], so a dropped frame or two doesn't end the session.
+ *  - Stop: the plank must be lost for [endGraceMs] (a debounce / low-pass filter), so adjusting your form or a
+ *    dropped frame or two doesn't end it.
+ *  - Warning: once a lapse has lasted [warnAfterMs] a single WARNING is raised, so you can get back in time;
+ *    if you then get back, RECOVERED is raised (so the warning can be silenced).
  *  - A lapse is only forgiven once the plank has been back for [recoverHoldMs]; a brief false "plank"
  *    reading while getting up must not restart the grace period.
  * When a plank ends, [lastEndedLostAtMs] is when it was last held (the start of the lapse).
  */
 class PlankTracker(
     private val startHoldMs: Long = 1_500,
-    private val endGraceMs: Long = 2_000,
+    val endGraceMs: Long = 3_000,
     private val recoverHoldMs: Long = 500,
+    private val warnAfterMs: Long = 1_000,
 ) {
-    enum class Event { STARTED, ENDED }
+    enum class Event { STARTED, ENDED, WARNING, RECOVERED }
 
     var active = false
         private set
@@ -21,6 +25,7 @@ class PlankTracker(
     private var lostSince: Long? = null
     private var recoverSince: Long? = null
     private var awaitingFirstPlank = false
+    private var warned = false
 
     /** Start of the lapse that ended the most recent plank (null until one has ended). */
     var lastEndedLostAtMs: Long? = null
@@ -61,6 +66,9 @@ class PlankTracker(
                 if (nowMs - since >= recoverHoldMs) {
                     lostSince = null
                     recoverSince = null
+                    val wasWarned = warned
+                    warned = false
+                    if (wasWarned) return Event.RECOVERED
                 }
             }
         } else {
@@ -68,16 +76,29 @@ class PlankTracker(
             if (lostSince == null) lostSince = nowMs
         }
         val lost = lostSince
-        if (lost != null && nowMs - lost >= endGraceMs) {
-            active = false
-            lastEndedLostAtMs = lost
-            lostSince = null
-            recoverSince = null
-            plankSince = null
-            return Event.ENDED
+        if (lost != null) {
+            if (nowMs - lost >= endGraceMs) {
+                active = false
+                lastEndedLostAtMs = lost
+                lostSince = null
+                recoverSince = null
+                plankSince = null
+                warned = false
+                return Event.ENDED
+            }
+            if (!inPlank && !warned && nowMs - lost >= warnAfterMs) {
+                warned = true
+                return Event.WARNING
+            }
         }
         return null
     }
+
+    /** True while a lapse has been warned about and the plank hasn't yet recovered or ended. */
+    val isWarning: Boolean get() = active && warned && lostSince != null
+
+    /** How long the current lapse has lasted (0 when the plank is fine). */
+    fun lapseMs(nowMs: Long): Long = lostSince?.let { nowMs - it } ?: 0L
 
     /**
      * The plank was started some other way (a button). The tracker then watches for the plank to be
@@ -99,5 +120,6 @@ class PlankTracker(
         lostSince = null
         recoverSince = null
         awaitingFirstPlank = false
+        warned = false
     }
 }

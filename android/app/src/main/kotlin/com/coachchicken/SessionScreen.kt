@@ -83,6 +83,16 @@ fun SessionScreen(
     Box(Modifier.fillMaxSize().background(if (onCam) Color.Black else MaterialTheme.colorScheme.background)) {
         if (onCam) {
             CameraLayer(state, onPose)
+            state.pose?.let {
+                // Matches the log's t_ms, so a screen recording can be lined up with a pasted log.
+                Text(
+                    "t=%.1fs".format(it.logMs / 1000.0),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.align(Alignment.TopEnd).systemBarsPadding().padding(8.dp)
+                        .background(Scrim, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
+                )
+            }
         }
 
         Column(
@@ -157,6 +167,8 @@ private fun CameraLayer(state: UiState, onPose: (List<Landmark>?, Float) -> Unit
 private fun statusText(state: UiState, reached: Boolean): String = when {
     state.phase == Phase.PLANKING && reached ->
         if (state.cameraOn) "Goal reached! Keep going, then get up or tap Done." else "Goal reached! Keep going, then tap Done."
+    state.phase == Phase.PLANKING && state.pose?.endsInMs != null ->
+        "Back into plank! Ending in ${(state.pose.endsInMs + 999) / 1000}s"
     state.phase == Phase.PLANKING ->
         if (state.cameraOn) "Planking. Get up or tap Stop to end early." else "Planking. Tap Stop to end early."
     !state.cameraOn -> "Get into position, then tap Start plank."

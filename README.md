@@ -24,7 +24,7 @@ A plank timer that clucks at you, and watches you plank.
  1. **Home**: the calendar (golden egg ring per day with a completed plank, 5 weeks, Sunday first) and **Start session**.
  2. **Session**: the camera shows your skeleton (MediaPipe Pose, on-device). Press **Start plank**, or just get into a plank and hold it for 1.5s, and the timer starts: quiet clucking throughout, a louder cluck every 10s.
  3. **At 60s**: a squawk, the quiet clucking stops, and the timer counts up past the goal in gold. The plank is *not* stopped: the button becomes **Done**.
- 4. **Ending**: press **Stop/Done**, or just get up (the camera notices after 2s and back-dates the end to when you left the plank). 60s or more counts and earns the egg; ending earlier is logged as incomplete and leaves you in the session to try again.
+ 4. **Ending**: press **Stop/Done**, or just get up. The camera debounces: a lapse out of plank has to last **3s** before the plank ends (so adjusting your form or a dropped frame is fine; the timer keeps running). About 1s into a lapse a long, building **"bwaaaak!"** starts and the status shows a countdown; get back into plank and it cuts off. If the 3s runs out the plank ends, back-dated to when you left it. 60s or more counts and earns the egg; ending earlier is logged as incomplete and leaves you in the session to try again.
  Camera permission refused? The session still works with the buttons. Leaving the app winds the session up.
 
 Later: plank form feedback ("pakak" when it's wrong).
@@ -35,7 +35,7 @@ Later: plank form feedback ("pakak" when it's wrong).
  * `core/` is plain Kotlin (timer cues, calendar grid, log format, pose/plank detection and tracker) with unit tests, including a replay of real recorded landmarks; `app/` is the Compose UI, CameraX and MediaPipe.
 
 ### Sounds
-The sounds in `app/src/main/res/raw/` are synthesized placeholders from `python tools/generate_sounds.py`. Replace `cluck_quiet_loop.wav`, `cluck_loud.wav` and `squawk.wav` with real recordings any time.
+The sounds in `app/src/main/res/raw/` are synthesized placeholders from `python tools/generate_sounds.py`. Replace `cluck_quiet_loop.wav`, `cluck_loud.wav`, `squawk.wav` and `bwaaak.wav` (the 2s warning that builds during the grace period) with real recordings any time.
 
 ### Pose log
-**Copy log** (in the session, or on the home screen afterwards) puts a pasteable CSV on the clipboard: per-frame (4/s) detector verdict, the numbers behind it (body angle, hip angle, elbow ratios) and the key joints, plus start/stop events. Paste it back to tune the plank detection thresholds (`readPlank` in `core/PlankPose.kt`).
+**Copy log** (in the session, or on the home screen afterwards) puts a pasteable CSV on the clipboard: per-frame (4/s) detector verdict, the numbers behind it (body angle, hip angle, elbow ratios) and the key joints, plus start/stop/warning events. The camera screen shows a small `t=` clock that matches the log's `t_ms`, so a screen recording lines up with a pasted log. Paste it back to tune the plank detection thresholds (`readPlank` in `core/PlankPose.kt`).
