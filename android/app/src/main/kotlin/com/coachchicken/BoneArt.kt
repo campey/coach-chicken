@@ -105,7 +105,7 @@ private fun DrawScope.bone(a: Offset, b: Offset, width: Float, knob: Float, seed
 }
 
 /**
- * The whole skeleton, hand-drawn: spine (vertebrae), ribs, pelvis, skull, and for each arm a humerus with a radius
+ * The whole skeleton, hand-drawn: spine (vertebrae), ribs, pelvis, and for each arm a humerus with a radius
  * and ulna, and for each leg a femur with a tibia and fibula. The far side of the body is dimmer and thinner.
  * [at] maps a landmark to a screen position; joints below 0.3 visibility are left out.
  */
@@ -185,24 +185,6 @@ internal fun DrawScope.drawBoneSkeleton(lms: List<Landmark>, at: (Landmark) -> O
         val pelvisPath = smoothClosed(pts)
         inked(listOf(pelvisPath), pal, 1f, inkW)
         drawPath(blob(pp(0.07f, 0f), torso * 0.03f, torso * 0.04f, 0f, 760), pal.ink) // the hole in the pelvis
-        // skull at the nose
-        val nose = lms[0]
-        if (nose.visibility >= 0.3f) {
-            val c = at(nose)
-            val down = (neck - c).let { val l = it.getDistance().coerceAtLeast(1f); it / l }
-            val dperp = Offset(-down.y, down.x)
-            val r = max(torso * 0.16f, 14.dp.toPx())
-            val cranium = blob(c - down * (r * 0.15f), r, r * 0.92f, 0f, 800, 12)
-            val jaw = blob(c + down * (r * 0.85f), r * 0.55f, r * 0.4f, atan2f(down.y, down.x), 801, 8)
-            inked(listOf(cranium, jaw), pal, 1f, inkW)
-            for (s in listOf(-1f, 1f)) { // eye sockets
-                drawPath(blob(c + dperp * (s * r * 0.42f) + down * (r * 0.1f), r * 0.24f, r * 0.28f, 0f, 810 + s.toInt()), pal.ink)
-            }
-            for (i in 0..2) { // teeth
-                val tc = c + down * (r * 0.95f) + dperp * ((i - 1) * r * 0.2f)
-                drawLine(pal.ink, tc - down * (r * 0.12f), tc + down * (r * 0.12f), strokeWidth = inkW * 0.8f, cap = StrokeCap.Round)
-            }
-        }
     }
 
     if (!leftFar) limb(11, 13, 15, 23, 25, 27, false, 100)
