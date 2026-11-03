@@ -58,6 +58,7 @@ import kotlin.math.hypot
 
 private val Gold = Color(0xFFFFB300)       // a perfect plank, with its aura
 private val Yellow = Color(0xFFFFF176)     // within tolerance: still a plank
+private val Grey = Color(0xFF9E9E9E)        // not a plank
 private val Green = Color(0xFF43A047)      // the goal zone
 private val Scrim = Color(0xB3000000)
 
@@ -236,7 +237,7 @@ private fun CameraPreview(front: Boolean, analyzer: ImageAnalysis.Analyzer, exec
 /**
  * Draws the green goal zone, then the skeleton, over a FIT_CENTER preview: the image is letterboxed, so normalised
  * coordinates are mapped into that box. Skeleton: gold with a growing aura when the plank is perfect, plain yellow
- * when it's within tolerance, white when it isn't a plank. The hips turn green while they're inside the zone.
+ * when it's within tolerance, grey when it isn't a plank. The hips turn green while they're inside the zone.
  */
 @Composable
 private fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier) {
@@ -278,7 +279,7 @@ private fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier) {
         val base = when (pose.grade) {
             PlankGrade.PERFECT -> Gold
             PlankGrade.OK -> Yellow
-            else -> Color.White
+            else -> Grey
         }
 
         if (pose.aura > 0.02f) { // a gold glow that builds the longer the form stays perfect

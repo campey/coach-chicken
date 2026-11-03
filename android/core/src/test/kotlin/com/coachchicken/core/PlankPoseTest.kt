@@ -131,8 +131,9 @@ class RealPhoneRowsTest {
         return l
     }
 
-    // t=47705: a good plank mid-set. Legs are off the left edge (negative x), so they are ignored. Was NOT_PLANK
-    // before, because the extrapolated ankle made the hip angle read 141 degrees.
+    // t=47705: a good plank mid-set. The legs are off the left edge (negative x) but MediaPipe is 64% sure where
+    // they are, and the extrapolation looked right on screen. The hip angle reads 141 degrees: it used to fail the
+    // 150 limit, and passes the tolerant 130.
     private val goodPlankLegsOffFrame = row(0.752f to 0.523f, 0.712f to 0.732f, 0.207f to 0.605f, -0.092f to 0.685f, -0.115f to 0.481f, 0.64f)
 
     // t=6861: the loose jersey drags the elbow point up (elbow only 0.13 torso-lengths below the shoulder).
@@ -141,15 +142,31 @@ class RealPhoneRowsTest {
     // t=30266: hip angle read 148.5 against a 150 limit.
     private val hipDipped = row(0.840f to 0.564f, 0.668f to 0.691f, 0.298f to 0.613f, -0.048f to 0.719f, -0.067f to 0.489f, 0.55f)
 
-    // t=66330: starting to get up; knee is in frame and the body is already tilted 33 degrees.
+    // t=66330: starting to get up; the hips are lifting (hip angle ~117 degrees with the off-frame ankle).
     private val gettingUp = row(0.778f to 0.531f, 0.747f to 0.751f, 0.220f to 0.438f, 0.224f to 0.804f, -0.061f to 0.698f, 0.74f)
 
     // t=67707: standing facing the camera.
     private val standing = row(0.311f to 0.106f, 0.166f to 0.234f, 0.153f to 0.489f, 0.266f to 0.741f, 0.261f to 0.809f, 0.83f)
 
-    @Test fun offFrameLegsAreIgnoredAndTheTorsoIsMeasured() {
-        assertEquals('H', plankMetrics(goodPlankLegsOffFrame, aspect)!!.lower)
-        assertEquals(PoseReading.PLANK, readPlank(goodPlankLegsOffFrame, aspect))
+    @Test fun aConfidentOffFrameAnkleIsUsed() {
+        val m = plankMetrics(goodPlankLegsOffFrame, aspect)!!
+        assertEquals('A', m.lower)
+        assertTrue(m.hipAngleDeg in 138.0..145.0, "hip ${m.hipAngleDeg}")
+        assertEquals(PlankGrade.OK, gradePlank(goodPlankLegsOffFrame, aspect))
+    }
+
+    @Test fun aLessConfidentOffFrameAnkleFallsBackToTheTorso() {
+        val unsure = goodPlankLegsOffFrame.map { it.copy(visibility = if (it.visibility > 0f) 0.4f else 0f) }
+        assertEquals('H', plankMetrics(unsure, aspect)!!.lower)
+        assertEquals(PoseReading.PLANK, readPlank(unsure, aspect))
+    }
+
+    @Test fun anAnkleFarOutsideTheFrameIsNotTrusted() {
+        val far = goodPlankLegsOffFrame.toMutableList().also {
+            it[PoseIdx.R_ANKLE] = Landmark(-0.9f, 0.48f, 0.9f)
+            it[PoseIdx.R_KNEE] = Landmark(-0.7f, 0.68f, 0.9f)
+        }
+        assertEquals('H', plankMetrics(far, aspect)!!.lower)
     }
 
     @Test fun anElbowDraggedByALooseSleeveStillCountsButIsNotPerfect() {

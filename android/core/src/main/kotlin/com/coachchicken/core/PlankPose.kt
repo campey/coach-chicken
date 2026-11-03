@@ -40,6 +40,10 @@ enum class PlankGrade {
  */
 data class PlankTolerances(
     val minVisibility: Float = 0.3f,
+    /** A leg point outside the image is only trusted if MediaPipe is at least this sure of it... */
+    val offFrameMinVisibility: Float = 0.5f,
+    /** ...and it is no further than this (in image widths/heights) beyond the edge. */
+    val offFrameMargin: Float = 0.4f,
     val okBodyDeg: Double = 28.0,
     val okHipDeg: Double = 130.0,
     val okElbowDrop: Double = 0.10,
@@ -72,6 +76,7 @@ data class PlankMetrics(
 )
 
 private fun Landmark.inFrame() = x in -0.02f..1.02f && y in -0.02f..1.02f
+private fun Landmark.within(margin: Float) = x in -margin..(1f + margin) && y in -margin..(1f + margin)
 
 /** The joints a plank is judged on: the better-seen side of the body, with the lowest usable leg point. */
 internal class PlankJoints(
@@ -84,7 +89,12 @@ internal class PlankJoints(
     val lower: Landmark,
 )
 
-internal fun pickJoints(landmarks: List<Landmark>, minVisibility: Float): PlankJoints? {
+internal fun pickJoints(
+    landmarks: List<Landmark>,
+    minVisibility: Float,
+    offFrameMinVisibility: Float = 0.5f,
+    offFrameMargin: Float = 0.4f,
+): PlankJoints? {
     if (landmarks.size < PoseIdx.COUNT) return null
     fun score(sho: Int, elb: Int, hip: Int, kne: Int, ank: Int) =
         listOf(sho, elb, hip).sumOf { landmarks[it].visibility.toDouble() } +
@@ -96,7 +106,9 @@ internal fun pickJoints(landmarks: List<Landmark>, minVisibility: Float): PlankJ
     val h = landmarks[if (useLeft) PoseIdx.L_HIP else PoseIdx.R_HIP]
     val knee = landmarks[if (useLeft) PoseIdx.L_KNEE else PoseIdx.R_KNEE]
     val ankle = landmarks[if (useLeft) PoseIdx.L_ANKLE else PoseIdx.R_ANKLE]
-    fun usable(l: Landmark) = l.visibility >= minVisibility && l.inFrame()
+    fun usable(l: Landmark) =
+        (l.visibility >= minVisibility && l.inFrame()) ||
+            (l.visibility >= offFrameMinVisibility && l.within(offFrameMargin))
     return when {
         usable(ankle) -> PlankJoints(useLeft, s, e, h, 'A', ankle)
         usable(knee) -> PlankJoints(useLeft, s, e, h, 'K', knee)
@@ -106,11 +118,18 @@ internal fun pickJoints(landmarks: List<Landmark>, minVisibility: Float): PlankJ
 
 /**
  * Measures the better-seen side of the body, or null if there aren't enough landmarks.
- * Missing legs are tolerated: ankle if usable, else knee, else the hip alone. A leg point is only usable if it is
- * visible enough AND inside the image: MediaPipe happily extrapolates joints beyond the frame, and those are noise.
+ * Missing legs are tolerated: ankle if usable, else knee, else the hip alone. A leg point inside the image is usable
+ * if it is visible enough. One beyond the edge is MediaPipe's extrapolation of where the leg must be: on a real phone
+ * recording it was plausible but noisy, so it is only used when the model is fairly sure and it isn't far off-screen.
  */
-fun plankMetrics(landmarks: List<Landmark>, aspect: Float = 1f, minVisibility: Float = 0.3f): PlankMetrics? {
-    val j = pickJoints(landmarks, minVisibility) ?: return null
+fun plankMetrics(
+    landmarks: List<Landmark>,
+    aspect: Float = 1f,
+    minVisibility: Float = 0.3f,
+    offFrameMinVisibility: Float = 0.5f,
+    offFrameMargin: Float = 0.4f,
+): PlankMetrics? {
+    val j = pickJoints(landmarks, minVisibility, offFrameMinVisibility, offFrameMargin) ?: return null
     val s = j.shoulder; val e = j.elbow; val h = j.hip; val lowerPoint = j.lower
     fun px(l: Landmark) = l.x * aspect
     val torso = hypot((px(s) - px(h)).toDouble(), (s.y - h.y).toDouble())
@@ -151,7 +170,8 @@ fun gradeMetrics(m: PlankMetrics, tol: PlankTolerances = PlankTolerances()): Pla
  * [aspect] is image width / height, so angles are measured in true proportions, not normalised ones.
  */
 fun gradePlank(landmarks: List<Landmark>, aspect: Float = 1f, tol: PlankTolerances = PlankTolerances()): PlankGrade {
-    val m = plankMetrics(landmarks, aspect, tol.minVisibility) ?: return PlankGrade.NO_BODY
+    val m = plankMetrics(landmarks, aspect, tol.minVisibility, tol.offFrameMinVisibility, tol.offFrameMargin)
+        ?: return PlankGrade.NO_BODY
     if (m.minVisibility < tol.minVisibility) return PlankGrade.NO_BODY
     return gradeMetrics(m, tol)
 }

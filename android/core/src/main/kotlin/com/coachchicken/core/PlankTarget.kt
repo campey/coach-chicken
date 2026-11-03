@@ -28,8 +28,8 @@ data class PlankTarget(val ax: Float, val ay: Float, val bx: Float, val by: Floa
  * Locks a target from the current pose: the straight line from the shoulder to the lowest usable leg point.
  * With no usable leg point it runs from the shoulder straight through the hip and on. Null if no body.
  */
-fun lockTarget(landmarks: List<Landmark>, aspect: Float = 1f, minVisibility: Float = 0.3f): PlankTarget? {
-    val j = pickJoints(landmarks, minVisibility) ?: return null
+fun lockTarget(landmarks: List<Landmark>, aspect: Float = 1f, tol: PlankTolerances = PlankTolerances()): PlankTarget? {
+    val j = pickJoints(landmarks, tol.minVisibility, tol.offFrameMinVisibility, tol.offFrameMargin) ?: return null
     val s = j.shoulder; val h = j.hip
     val torso = hypot(((s.x - h.x) * aspect).toDouble(), (s.y - h.y).toDouble()).toFloat()
     if (torso < 1e-3f) return null
@@ -43,4 +43,5 @@ fun lockTarget(landmarks: List<Landmark>, aspect: Float = 1f, minVisibility: Flo
 }
 
 /** The hip of the better-seen side, for judging it against a [PlankTarget]. */
-fun plankHip(landmarks: List<Landmark>, minVisibility: Float = 0.3f): Landmark? = pickJoints(landmarks, minVisibility)?.hip
+fun plankHip(landmarks: List<Landmark>, tol: PlankTolerances = PlankTolerances()): Landmark? =
+    pickJoints(landmarks, tol.minVisibility, tol.offFrameMinVisibility, tol.offFrameMargin)?.hip
