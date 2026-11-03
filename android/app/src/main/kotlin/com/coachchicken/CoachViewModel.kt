@@ -21,6 +21,7 @@ import com.coachchicken.core.gradePlank
 import com.coachchicken.core.headOutOfFrame
 import com.coachchicken.core.lockTarget
 import com.coachchicken.core.plankHip
+import com.coachchicken.core.plankMetrics
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,8 +47,12 @@ data class PoseUi(
     val endsInMs: Long? = null,
     /** The camera-session clock, the same as the log's t_ms (shown on screen so a screen recording lines up). */
     val logMs: Long = 0,
-    /** 0..1 gold aura: builds while the plank is perfect. */
+    /** 0..1 gold glow: builds within seconds while the plank is perfect. */
     val aura: Float = 0f,
+    /** 0..1 how long the perfect form has been held (slow): drives the glow size and the sparkle count. */
+    val streak: Float = 0f,
+    /** 'L' or 'R': the side of the body the grading and the green zone are judged on; null if no body. */
+    val judgedSide: Char? = null,
     /** The green goal zone, once a plank has been seen. */
     val target: PlankTarget? = null,
     /** Whether the hip is inside [target] (null when there's no target or no body). */
@@ -250,6 +255,8 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
                         pose = PoseUi(
                             landmarks.orEmpty(), aspect, grade, tracker.holdProgress(now), endsIn, cameraMs(),
                             aura = auraNow,
+                            streak = aura.streak,
+                            judgedSide = landmarks?.let { plankMetrics(it, aspect)?.side },
                             target = target,
                             hipInZone = if (target != null && hip != null) target!!.contains(hip, aspect) else null,
                             headOutOfFrame = landmarks != null && grade != PlankGrade.NO_BODY && headOutOfFrame(landmarks),

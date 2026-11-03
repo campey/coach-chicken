@@ -31,12 +31,19 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -54,7 +61,9 @@ import com.coachchicken.core.Landmark
 import com.coachchicken.core.PlankGrade
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.math.PI
 import kotlin.math.hypot
+import kotlin.math.sin
 
 private val Gold = Color(0xFFFFB300)       // a perfect plank, with its aura
 private val Yellow = Color(0xFFFFF176)     // within tolerance: still a plank
@@ -236,15 +245,70 @@ private fun CameraPreview(front: Boolean, analyzer: ImageAnalysis.Analyzer, exec
     AndroidView({ previewView }, modifier)
 }
 
+private val GoldGlow = Color(0xFFFFB300)
+private val SparkleGold = Color(0xFFFFE082)
+private val LEFT_SIDE = setOf(11, 13, 15, 23, 25, 27)
+private val RIGHT_SIDE = setOf(12, 14, 16, 24, 26, 28)
+
+/** A cheap deterministic hash to float in 0..1, so each sparkle keeps its own character from frame to frame. */
+private fun rnd(seed: Int): Float {
+    var x = seed * -1640531527
+    x = x xor (x ushr 15); x *= 0x2c1b3c6d
+    x = x xor (x ushr 12); x *= 0x297a2d39
+    x = x xor (x ushr 15)
+    return (x and 0xFFFFFF) / 16777216f
+}
+
+private fun DrawScope.drawStar(c: Offset, r: Float, color: Color) {
+    val k = 0.22f // how fat the four points are
+    val path = Path().apply {
+        moveTo(c.x, c.y - r); lineTo(c.x + r * k, c.y - r * k); lineTo(c.x + r, c.y); lineTo(c.x + r * k, c.y + r * k)
+        lineTo(c.x, c.y + r); lineTo(c.x - r * k, c.y + r * k); lineTo(c.x - r, c.y); lineTo(c.x - r * k, c.y - r * k); close()
+    }
+    drawPath(path, color)
+}
+
+/** Twinkling stars spawned along the bones: more of them, and wider, the longer the perfect form is held. */
+private fun DrawScope.drawSparkles(bones: List<Pair<Offset, Offset>>, aura: Float, streak: Float, nowMs: Long) {
+    if (bones.isEmpty()) return
+    val count = (6 + 30 * streak * aura).toInt()
+    for (i in 0 until count) {
+        val period = 700 + (rnd(i * 4) * 700).toInt()
+        val t = nowMs + (rnd(i * 4 + 1) * period).toLong()
+        val cycle = (t / period).toInt()
+        val local = (t % period).toFloat() / period
+        val twinkle = sin(PI * local).toFloat()
+        val bone = bones[(rnd(i * 131 + cycle * 977 + 1) * bones.size).toInt().coerceAtMost(bones.size - 1)]
+        val d = bone.second - bone.first
+        val len = hypot(d.x, d.y).coerceAtLeast(1f)
+        val along = bone.first + d * rnd(i * 131 + cycle * 977 + 2)
+        val spread = (14 + 30 * streak).dp.toPx()
+        val side = (rnd(i * 131 + cycle * 977 + 3) - 0.5f) * 2f * spread
+        val pos = Offset(along.x - d.y / len * side, along.y + d.x / len * side - local * 10.dp.toPx())
+        val r4 = rnd(i * 131 + cycle * 977 + 4)
+        val size = (4 + 8 * r4 + 6 * streak).dp.toPx() * (0.4f + 0.6f * twinkle)
+        val color = if (r4 > 0.5f) Color.White else SparkleGold
+        drawStar(pos, size, color.copy(alpha = (twinkle * (0.55f + 0.45f * aura)).coerceIn(0f, 1f)))
+    }
+}
+
 /**
  * Draws the green goal zone, then the skeleton, over a FIT_CENTER preview: the image is letterboxed, so normalised
- * coordinates are mapped into that box. Skeleton: gold with a growing aura when the plank is perfect, plain yellow
- * when it's within tolerance, grey when it isn't a plank. The hips turn green while they're inside the zone.
+ * coordinates are mapped into that box. Skeleton: gold when the plank is perfect (with a pulsing aura and twinkling
+ * sparkles that grow the longer the form is held), plain yellow when it's within tolerance, grey when it isn't a
+ * plank. The side the plank is judged on is drawn full size; the far side is smaller and dimmer. Only the judged
+ * hip turns green while it is inside the zone.
  */
 @Composable
 private fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier) {
+    val sparkling = (pose?.aura ?: 0f) > 0.12f
+    var clockMs by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(sparkling) {
+        while (sparkling) withFrameNanos { clockMs = it / 1_000_000 } // only animates while there is something to animate
+    }
     Canvas(modifier) {
         if (pose == null) return@Canvas
+        val nowMs = clockMs
         val viewAspect = size.width / size.height
         val (w, h) = if (viewAspect > pose.aspect) (size.height * pose.aspect) to size.height
         else size.width to (size.width / pose.aspect)
@@ -283,26 +347,45 @@ private fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier) {
             PlankGrade.OK -> Yellow
             else -> Grey
         }
+        val visibleBones = BONES.filter { (a, b) -> visible(a) && visible(b) }.map { (a, b) -> at(lms[a]) to at(lms[b]) }
 
-        if (pose.aura > 0.02f) { // a gold glow that builds the longer the form stays perfect
-            listOf(30f to 0.10f, 20f to 0.16f, 12f to 0.24f).forEach { (width, alpha) ->
-                val strength = pose.aura
-                BONES.forEach { (a, b) ->
-                    if (visible(a) && visible(b)) {
-                        drawLine(Gold.copy(alpha = alpha * strength), at(lms[a]), at(lms[b]),
-                            width.dp.toPx() * (0.5f + 0.8f * strength), StrokeCap.Round)
-                    }
+        if (pose.aura > 0.02f) { // the cheesy part: a pulsing gold glow, bigger the longer the form is held
+            val pulse = 0.88f + 0.12f * sin(nowMs / 1200.0 * 2 * PI).toFloat()
+            val power = pose.aura * pulse
+            val grow = 1f + 1.2f * pose.streak
+            listOf(52f to 0.04f, 40f to 0.06f, 30f to 0.08f, 22f to 0.10f, 15f to 0.14f, 9f to 0.20f).forEach { (width, alpha) ->
+                val a = (alpha * power * (1f + 0.5f * pose.streak)).coerceAtMost(0.6f)
+                visibleBones.forEach { (p, q) ->
+                    drawLine(GoldGlow.copy(alpha = a), p, q, width.dp.toPx() * (0.45f + 0.55f * power) * grow, StrokeCap.Round)
                 }
             }
-            JOINTS.forEach { if (visible(it)) drawCircle(Gold.copy(alpha = 0.22f * pose.aura), (9 + 16 * pose.aura).dp.toPx(), at(lms[it])) }
+            JOINTS.forEach { // soft radial halos: bright gold in the middle, fading to nothing
+                if (visible(it)) {
+                    val c = at(lms[it])
+                    val r = (12 + 22 * power * grow).dp.toPx()
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(SparkleGold.copy(alpha = 0.55f * power), GoldGlow.copy(alpha = 0.20f * power), Color.Transparent),
+                            center = c, radius = r,
+                        ),
+                        radius = r, center = c,
+                    )
+                }
+            }
+            drawSparkles(visibleBones, pose.aura, pose.streak, nowMs)
         }
 
-        BONES.forEach { (a, b) ->
-            if (visible(a) && visible(b)) drawLine(base, at(lms[a]), at(lms[b]), 6.dp.toPx(), StrokeCap.Round)
+        val far = when (pose.judgedSide) { 'L' -> RIGHT_SIDE; 'R' -> LEFT_SIDE; else -> emptySet() }
+        visibleBones.forEach { (p, q) -> drawLine(base, p, q, 6.dp.toPx(), StrokeCap.Round) }
+        JOINTS.forEach {
+            if (visible(it)) {
+                val isFar = it in far
+                drawCircle(if (isFar) base.copy(alpha = 0.55f) else base, (if (isFar) 4.5f else 7f).dp.toPx(), at(lms[it]))
+            }
         }
-        JOINTS.forEach { if (visible(it)) drawCircle(base, 7.dp.toPx(), at(lms[it])) }
         if (pose.hipInZone == true) {
-            listOf(23, 24).forEach { if (visible(it)) drawCircle(Green, 9.dp.toPx(), at(lms[it])) }
+            val judgedHip = if (pose.judgedSide == 'L') 23 else 24
+            if (visible(judgedHip)) drawCircle(Green, 9.dp.toPx(), at(lms[judgedHip]))
         }
     }
 }

@@ -44,4 +44,33 @@ class AuraMeterTest {
         a.reset()
         assertEquals(0f, a.value)
     }
+
+    @Test fun theStreakKeepsGrowingThroughASixtySecondHold() {
+        val a = AuraMeter()
+        a.run(0, 10_000, true)
+        assertTrue(a.streak in 0.4f..0.6f, "streak at 10s ${a.streak}")
+        val glowAt10 = a.value
+        a.run(10_100, 30_000, true)
+        assertTrue(a.streak in 0.8f..0.9f, "streak at 30s ${a.streak}")
+        a.run(30_100, 60_000, true)
+        assertTrue(a.streak > 0.95f, "streak at 60s ${a.streak}")
+        assertTrue(glowAt10 > 0.99f, "the glow itself saturates early: $glowAt10")
+    }
+
+    @Test fun theStreakDrainsMoreSlowlyThanTheGlowFades() {
+        val a = AuraMeter()
+        a.run(0, 60_000, true)
+        a.run(60_100, 62_000, false)
+        assertTrue(a.value < 0.05f, "glow ${a.value}")
+        assertTrue(a.streak in 0.4f..0.7f, "streak ${a.streak}")
+        a.run(62_100, 75_000, false)
+        assertTrue(a.streak < 0.1f, "streak ${a.streak}")
+    }
+
+    @Test fun resetClearsTheStreakToo() {
+        val a = AuraMeter()
+        a.run(0, 30_000, true)
+        a.reset()
+        assertEquals(0f, a.streak)
+    }
 }
