@@ -41,7 +41,7 @@ fun CalendarView(weeks: List<List<CalendarDay>>, modifier: Modifier = Modifier) 
                     it,
                     Modifier.weight(1f),
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
@@ -87,9 +87,9 @@ private fun DayCell(day: CalendarDay, modifier: Modifier) {
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.Normal,
             color = when {
-                day.isFuture -> Color.LightGray
+                day.isFuture -> MaterialTheme.colorScheme.outlineVariant
                 day.isToday -> MaterialTheme.colorScheme.primary
-                else -> Color.DarkGray
+                else -> MaterialTheme.colorScheme.onSurface
             },
         )
     }
