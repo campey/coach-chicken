@@ -39,11 +39,3 @@ The sounds in `app/src/main/res/raw/` are synthesized placeholders from `python 
 
 ### Pose log
 **Copy log** (in the session, or on the home screen afterwards) puts a pasteable CSV on the clipboard: per-frame (4/s) detector verdict, the numbers behind it (body angle, hip angle, elbow ratios) and the key joints, plus start/stop events. Paste it back to tune the plank detection thresholds (`readPlank` in `core/PlankPose.kt`).
-
-### Build
- * Needs JDK 17+ and the Android SDK (`ANDROID_HOME`, or `sdk.dir` in `android/local.properties`).
- * `cd android && gradle :core:test :app:assembleDebug`, then install `app/build/outputs/apk/debug/app-debug.apk`.
- * `core/` is plain Kotlin (timer cues, calendar grid, log format) with unit tests; `app/` is the Compose UI.
-
-### Sounds
-The sounds in `app/src/main/res/raw/` are synthesized placeholders from `python tools/generate_sounds.py`. Replace `cluck_quiet_loop.wav`, `cluck_loud.wav` and `squawk.wav` with real recordings any time.
