@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 /**
  * Replays real MediaPipe landmarks recorded from a side-on plank tutorial video:
  * plank from the start, a zoom shot where the ankle leaves the frame (~15.8-16.8s),
- * then he gets up from ~27s, passing through a brief false "plank" at ~28.4s.
+ * then he lifts his hips from ~27s and stands by ~29s.
  */
 class RecordedVideoReplayTest {
     private val aspect = 1920f / 1080f
@@ -54,7 +54,7 @@ class RecordedVideoReplayTest {
     @Test fun startsAfterTheHold() {
         val (started, _, _) = replay()
         assertNotNull(started)
-        assertTrue(started in 1_400..2_200, "started at $started")
+        assertTrue(started in 1_000..2_200, "started at $started")
     }
 
     @Test fun theZoomShotStillReadsAsAPlankWithoutAnkles() {
@@ -75,14 +75,15 @@ class RecordedVideoReplayTest {
         val (_, ended, lostAt) = replay()
         assertNotNull(ended)
         assertNotNull(lostAt)
-        assertTrue(lostAt in 26_500..28_000, "lapse began at $lostAt")
-        assertTrue(ended in 29_500..31_500, "ended at $ended")
+        // with the generous tolerance the slow hip-lift (from ~27s) is accepted until the body visibly tilts (~28.4s)
+        assertTrue(lostAt in 27_500..29_000, "lapse began at $lostAt")
+        assertTrue(ended in 30_500..32_500, "ended at $ended")
         assertEquals(true, ended - lostAt >= 3_000)
     }
 
     @Test fun warnsOnceWhenGettingUpAndNeverDuringThePlank() {
         replay()
         assertEquals(1, warnings.size, "warnings at $warnings")
-        assertTrue(warnings.single() in 27_500..29_500, "warned at ${warnings.single()}")
+        assertTrue(warnings.single() in 28_500..30_500, "warned at ${warnings.single()}")
     }
 }

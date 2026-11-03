@@ -112,3 +112,80 @@ class MissingLegsTest {
         assertEquals(PoseReading.NOT_PLANK, readPlank(piked))
     }
 }
+
+/** Rows lifted from a real phone log (front camera, portrait, loose jersey, legs out of frame). Aspect 0.75. */
+class RealPhoneRowsTest {
+    private val aspect = 0.75f
+
+    /** The log's right-side joints; the rest of the body is left invisible. */
+    private fun row(
+        sho: Pair<Float, Float>, elb: Pair<Float, Float>, hip: Pair<Float, Float>,
+        kne: Pair<Float, Float>, ank: Pair<Float, Float>, vis: Float,
+    ): List<Landmark> {
+        val l = MutableList(PoseIdx.COUNT) { Landmark(0f, 0f, 0f) }
+        l[PoseIdx.R_SHOULDER] = Landmark(sho.first, sho.second, vis)
+        l[PoseIdx.R_ELBOW] = Landmark(elb.first, elb.second, vis)
+        l[PoseIdx.R_HIP] = Landmark(hip.first, hip.second, vis)
+        l[PoseIdx.R_KNEE] = Landmark(kne.first, kne.second, vis)
+        l[PoseIdx.R_ANKLE] = Landmark(ank.first, ank.second, vis)
+        return l
+    }
+
+    // t=47705: a good plank mid-set. Legs are off the left edge (negative x), so they are ignored. Was NOT_PLANK
+    // before, because the extrapolated ankle made the hip angle read 141 degrees.
+    private val goodPlankLegsOffFrame = row(0.752f to 0.523f, 0.712f to 0.732f, 0.207f to 0.605f, -0.092f to 0.685f, -0.115f to 0.481f, 0.64f)
+
+    // t=6861: the loose jersey drags the elbow point up (elbow only 0.13 torso-lengths below the shoulder).
+    private val sleeveDraggedElbow = row(0.834f to 0.491f, 0.683f to 0.541f, 0.327f to 0.593f, -0.026f to 0.680f, -0.263f to 0.674f, 0.50f)
+
+    // t=30266: hip angle read 148.5 against a 150 limit.
+    private val hipDipped = row(0.840f to 0.564f, 0.668f to 0.691f, 0.298f to 0.613f, -0.048f to 0.719f, -0.067f to 0.489f, 0.55f)
+
+    // t=66330: starting to get up; knee is in frame and the body is already tilted 33 degrees.
+    private val gettingUp = row(0.778f to 0.531f, 0.747f to 0.751f, 0.220f to 0.438f, 0.224f to 0.804f, -0.061f to 0.698f, 0.74f)
+
+    // t=67707: standing facing the camera.
+    private val standing = row(0.311f to 0.106f, 0.166f to 0.234f, 0.153f to 0.489f, 0.266f to 0.741f, 0.261f to 0.809f, 0.83f)
+
+    @Test fun offFrameLegsAreIgnoredAndTheTorsoIsMeasured() {
+        assertEquals('H', plankMetrics(goodPlankLegsOffFrame, aspect)!!.lower)
+        assertEquals(PoseReading.PLANK, readPlank(goodPlankLegsOffFrame, aspect))
+    }
+
+    @Test fun anElbowDraggedByALooseSleeveStillCountsButIsNotPerfect() {
+        assertEquals(PlankGrade.OK, gradePlank(sleeveDraggedElbow, aspect))
+    }
+
+    @Test fun aSlightHipDipStillCounts() = assertEquals(PoseReading.PLANK, readPlank(hipDipped, aspect))
+
+    @Test fun startingToGetUpIsNotAPlank() = assertEquals(PoseReading.NOT_PLANK, readPlank(gettingUp, aspect))
+
+    @Test fun standingIsNotAPlank() = assertEquals(PoseReading.NOT_PLANK, readPlank(standing, aspect))
+}
+
+class GradingTest {
+    private fun pose(hipY: Float = 0.54f, elbowY: Float = 0.62f, ankleY: Float = 0.58f): List<Landmark> {
+        val l = MutableList(PoseIdx.COUNT) { Landmark(0f, 0f, 0f) }
+        l[11] = Landmark(0.25f, 0.50f); l[13] = Landmark(0.25f, elbowY)
+        l[23] = Landmark(0.50f, hipY); l[27] = Landmark(0.80f, ankleY)
+        return l
+    }
+
+    @Test fun aCleanStraightPlankIsPerfect() = assertEquals(PlankGrade.PERFECT, gradePlank(pose()))
+
+    @Test fun aSaggingButTolerableHipIsOkNotPerfect() {
+        // hip drops 0.12 below the shoulder-ankle line: roughly a 148 degree hip angle
+        assertEquals(PlankGrade.OK, gradePlank(pose(hipY = 0.66f)))
+    }
+
+    @Test fun aShallowElbowDropIsOk() = assertEquals(PlankGrade.OK, gradePlank(pose(elbowY = 0.54f)))
+
+    @Test fun veryBentIsNotAPlank() = assertEquals(PlankGrade.NOT_PLANK, gradePlank(pose(hipY = 0.82f)))
+
+    @Test fun gradeMapsToReading() {
+        assertEquals(PoseReading.PLANK, PlankGrade.PERFECT.reading)
+        assertEquals(PoseReading.PLANK, PlankGrade.OK.reading)
+        assertEquals(PoseReading.NOT_PLANK, PlankGrade.NOT_PLANK.reading)
+        assertEquals(PoseReading.NO_BODY, PlankGrade.NO_BODY.reading)
+    }
+}

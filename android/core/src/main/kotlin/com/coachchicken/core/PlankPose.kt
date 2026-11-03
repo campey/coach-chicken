@@ -21,12 +21,41 @@ object PoseIdx {
 
 enum class PoseReading { NO_BODY, NOT_PLANK, PLANK }
 
-/** The numbers [readPlank] decides on, so they can be logged and the thresholds tuned. */
+/** How good the plank looks: PERFECT is gold, OK is within tolerance (still a plank), NOT_PLANK is not. */
+enum class PlankGrade {
+    NO_BODY, NOT_PLANK, OK, PERFECT;
+
+    val reading: PoseReading
+        get() = when (this) {
+            NO_BODY -> PoseReading.NO_BODY
+            NOT_PLANK -> PoseReading.NOT_PLANK
+            else -> PoseReading.PLANK
+        }
+}
+
+/**
+ * Limits for "within tolerance" (OK) and "perfect". The OK limits are deliberately generous: they were tuned on a
+ * real phone recording (front camera, loose jersey, legs partly out of frame) where a good plank wobbled around
+ * a 155 degree hip angle with dips into the 130s and elbow points drifting about.
+ */
+data class PlankTolerances(
+    val minVisibility: Float = 0.3f,
+    val okBodyDeg: Double = 28.0,
+    val okHipDeg: Double = 130.0,
+    val okElbowDrop: Double = 0.10,
+    val okElbowOffset: Double = 0.9,
+    val perfectBodyDeg: Double = 12.0,
+    val perfectHipDeg: Double = 160.0,
+    val perfectElbowDrop: Double = 0.30,
+    val perfectElbowOffset: Double = 0.45,
+)
+
+/** The numbers [gradePlank] decides on, so they can be logged and the thresholds tuned. */
 data class PlankMetrics(
     /** 'L' or 'R': the side of the body the camera sees best. */
     val side: Char,
     /**
-     * The lowest body point that was visible enough to measure the body line to:
+     * The lowest body point that was visible enough, and inside the frame, to measure the body line to:
      * 'A' ankle, else 'K' knee, else 'H' hip only (legs out of frame; the line is then just the torso).
      */
     val lower: Char,
@@ -42,11 +71,20 @@ data class PlankMetrics(
     val minVisibility: Float,
 )
 
-/**
- * Measures the better-seen side of the body, or null if there aren't enough landmarks.
- * Missing legs are tolerated: ankle if visible (>= [minVisibility]), else knee, else the hip alone.
- */
-fun plankMetrics(landmarks: List<Landmark>, aspect: Float = 1f, minVisibility: Float = 0.5f): PlankMetrics? {
+private fun Landmark.inFrame() = x in -0.02f..1.02f && y in -0.02f..1.02f
+
+/** The joints a plank is judged on: the better-seen side of the body, with the lowest usable leg point. */
+internal class PlankJoints(
+    val left: Boolean,
+    val shoulder: Landmark,
+    val elbow: Landmark,
+    val hip: Landmark,
+    /** 'A' ankle, 'K' knee, 'H' hip only. */
+    val lowerCode: Char,
+    val lower: Landmark,
+)
+
+internal fun pickJoints(landmarks: List<Landmark>, minVisibility: Float): PlankJoints? {
     if (landmarks.size < PoseIdx.COUNT) return null
     fun score(sho: Int, elb: Int, hip: Int, kne: Int, ank: Int) =
         listOf(sho, elb, hip).sumOf { landmarks[it].visibility.toDouble() } +
@@ -58,52 +96,69 @@ fun plankMetrics(landmarks: List<Landmark>, aspect: Float = 1f, minVisibility: F
     val h = landmarks[if (useLeft) PoseIdx.L_HIP else PoseIdx.R_HIP]
     val knee = landmarks[if (useLeft) PoseIdx.L_KNEE else PoseIdx.R_KNEE]
     val ankle = landmarks[if (useLeft) PoseIdx.L_ANKLE else PoseIdx.R_ANKLE]
-    val (lowerCode, lowerPoint) = when {
-        ankle.visibility >= minVisibility -> 'A' to ankle
-        knee.visibility >= minVisibility -> 'K' to knee
-        else -> 'H' to h
+    fun usable(l: Landmark) = l.visibility >= minVisibility && l.inFrame()
+    return when {
+        usable(ankle) -> PlankJoints(useLeft, s, e, h, 'A', ankle)
+        usable(knee) -> PlankJoints(useLeft, s, e, h, 'K', knee)
+        else -> PlankJoints(useLeft, s, e, h, 'H', h)
     }
+}
 
+/**
+ * Measures the better-seen side of the body, or null if there aren't enough landmarks.
+ * Missing legs are tolerated: ankle if usable, else knee, else the hip alone. A leg point is only usable if it is
+ * visible enough AND inside the image: MediaPipe happily extrapolates joints beyond the frame, and those are noise.
+ */
+fun plankMetrics(landmarks: List<Landmark>, aspect: Float = 1f, minVisibility: Float = 0.3f): PlankMetrics? {
+    val j = pickJoints(landmarks, minVisibility) ?: return null
+    val s = j.shoulder; val e = j.elbow; val h = j.hip; val lowerPoint = j.lower
     fun px(l: Landmark) = l.x * aspect
     val torso = hypot((px(s) - px(h)).toDouble(), (s.y - h.y).toDouble())
     val bodyAngle = Math.toDegrees(atan2(abs(lowerPoint.y - s.y).toDouble(), abs(px(lowerPoint) - px(s)).toDouble()))
-    val hipAngle = if (lowerCode == 'H') 180.0 else angleAt(px(h), h.y, px(s), s.y, px(lowerPoint), lowerPoint.y)
+    val hipAngle = if (j.lowerCode == 'H') 180.0 else angleAt(px(h), h.y, px(s), s.y, px(lowerPoint), lowerPoint.y)
     return PlankMetrics(
-        side = if (useLeft) 'L' else 'R',
-        lower = lowerCode,
+        side = if (j.left) 'L' else 'R',
+        lower = j.lowerCode,
         bodyAngleDeg = bodyAngle,
         hipAngleDeg = hipAngle,
         elbowDropRatio = if (torso < 1e-6) 0.0 else (e.y - s.y) / torso,
         elbowOffsetRatio = if (torso < 1e-6) Double.MAX_VALUE else abs(px(e) - px(s)) / torso,
-        minVisibility = minOf(s.visibility, e.visibility, h.visibility, if (lowerCode == 'H') 1f else lowerPoint.visibility),
+        minVisibility = minOf(s.visibility, e.visibility, h.visibility, if (j.lowerCode == 'H') 1f else lowerPoint.visibility),
     )
 }
 
+/** Grades already-measured [PlankMetrics] (visibility is checked by the caller). */
+fun gradeMetrics(m: PlankMetrics, tol: PlankTolerances = PlankTolerances()): PlankGrade {
+    val ok = m.bodyAngleDeg <= tol.okBodyDeg &&
+        m.hipAngleDeg >= tol.okHipDeg &&
+        m.elbowDropRatio >= tol.okElbowDrop &&
+        m.elbowOffsetRatio <= tol.okElbowOffset
+    if (!ok) return PlankGrade.NOT_PLANK
+    val perfect = m.bodyAngleDeg <= tol.perfectBodyDeg &&
+        m.hipAngleDeg >= tol.perfectHipDeg &&
+        m.elbowDropRatio >= tol.perfectElbowDrop &&
+        m.elbowOffsetRatio <= tol.perfectElbowOffset
+    return if (perfect) PlankGrade.PERFECT else PlankGrade.OK
+}
+
 /**
- * Is this a side-on plank? Uses whichever side of the body the camera sees best.
- *  - the shoulder-to-ankle line is within [maxBodyAngleDeg] of horizontal
- *    (to the knee, or just the hip, when the legs are out of frame),
+ * Is this a side-on plank, and how good? Uses whichever side of the body the camera sees best.
+ *  - the shoulder-to-ankle line is near horizontal (to the knee, or just the hip, when the legs are out of frame),
  *  - the body is straight at the hip (no sagging or piking),
  *  - the upper arm props the shoulder up: the elbow sits well below the shoulder, roughly underneath it.
  *    This is what tells a plank from simply lying on the floor.
  *
  * [aspect] is image width / height, so angles are measured in true proportions, not normalised ones.
  */
-fun readPlank(
-    landmarks: List<Landmark>,
-    aspect: Float = 1f,
-    minVisibility: Float = 0.5f,
-    maxBodyAngleDeg: Double = 20.0,
-    minHipAngleDeg: Double = 150.0,
-): PoseReading {
-    val m = plankMetrics(landmarks, aspect, minVisibility) ?: return PoseReading.NO_BODY
-    if (m.minVisibility < minVisibility) return PoseReading.NO_BODY
-    val plank = m.bodyAngleDeg <= maxBodyAngleDeg &&
-        m.hipAngleDeg >= minHipAngleDeg &&
-        m.elbowDropRatio >= 0.25 &&
-        m.elbowOffsetRatio <= 0.8
-    return if (plank) PoseReading.PLANK else PoseReading.NOT_PLANK
+fun gradePlank(landmarks: List<Landmark>, aspect: Float = 1f, tol: PlankTolerances = PlankTolerances()): PlankGrade {
+    val m = plankMetrics(landmarks, aspect, tol.minVisibility) ?: return PlankGrade.NO_BODY
+    if (m.minVisibility < tol.minVisibility) return PlankGrade.NO_BODY
+    return gradeMetrics(m, tol)
 }
+
+/** [gradePlank] collapsed to "is it a plank at all" (OK or PERFECT). */
+fun readPlank(landmarks: List<Landmark>, aspect: Float = 1f, tol: PlankTolerances = PlankTolerances()): PoseReading =
+    gradePlank(landmarks, aspect, tol).reading
 
 /** Angle in degrees at vertex (vx, vy) between the rays to (ax, ay) and (bx, by). */
 private fun angleAt(vx: Float, vy: Float, ax: Float, ay: Float, bx: Float, by: Float): Double {

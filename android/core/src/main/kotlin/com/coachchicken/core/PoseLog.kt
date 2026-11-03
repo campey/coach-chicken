@@ -2,7 +2,7 @@ package com.coachchicken.core
 
 /**
  * A compact, pasteable log of what the camera saw: one CSV row per (throttled) frame with the detector's
- * verdict, the numbers behind it, and the key joints, interleaved with `# event` lines.
+ * grade (NO_BODY / NOT_PLANK / OK / PERFECT), the filtered plank signal and aura, the hip's distance from the green target zone (tgt_off: 1 = the zone's edge), the numbers behind it, and the key joints, interleaved with `# event` lines.
  * Keeps only the most recent [capacity] lines.
  */
 class PoseLog(
@@ -27,7 +27,10 @@ class PoseLog(
         phase: String,
         landmarks: List<Landmark>?,
         aspect: Float,
-        reading: PoseReading,
+        grade: PlankGrade,
+        smoothed: Float = 0f,
+        aura: Float = 0f,
+        targetOffset: Float? = null,
     ) {
         if (lastFrameMs != Long.MIN_VALUE && tMs - lastFrameMs < minIntervalMs) return
         lastFrameMs = tMs
@@ -38,7 +41,7 @@ class PoseLog(
         }
         val metrics = if (m == null) ",,,,,,"
         else "${m.side},${m.lower},${f(m.bodyAngleDeg, 1)},${f(m.hipAngleDeg, 1)},${f(m.elbowDropRatio, 2)},${f(m.elbowOffsetRatio, 2)},${f(m.minVisibility.toDouble(), 2)}"
-        push("$tMs,$phase,$reading,${f(aspect.toDouble(), 3)},$metrics,$joints")
+        push("$tMs,$phase,$grade,${f(smoothed.toDouble(), 2)},${f(aura.toDouble(), 2)},${targetOffset?.let { f(it.toDouble(), 2) } ?: ""},${f(aspect.toDouble(), 3)},$metrics,$joints")
     }
 
     fun render(): String = buildString {
@@ -62,7 +65,7 @@ class PoseLog(
         /** Nose, shoulders, elbows, wrists, hips, knees, ankles. */
         val LOGGED = listOf(0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28)
         private val NAMES = listOf("nose", "lsho", "rsho", "lelb", "relb", "lwri", "rwri", "lhip", "rhip", "lkne", "rkne", "lank", "rank")
-        private val HEADER = "t_ms,phase,reading,aspect,side,lower,body_deg,hip_deg,elbow_drop,elbow_off,min_vis," +
+        private val HEADER = "t_ms,phase,grade,plank_s,aura,tgt_off,aspect,side,lower,body_deg,hip_deg,elbow_drop,elbow_off,min_vis," +
             NAMES.joinToString(",") { "${it}_x,${it}_y" }
     }
 }

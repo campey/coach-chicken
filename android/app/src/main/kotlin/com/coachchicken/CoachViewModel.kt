@@ -4,9 +4,12 @@ import android.app.Application
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.coachchicken.core.AuraMeter
 import com.coachchicken.core.CalendarDay
 import com.coachchicken.core.Cue
 import com.coachchicken.core.Landmark
+import com.coachchicken.core.PlankGrade
+import com.coachchicken.core.PlankTarget
 import com.coachchicken.core.PlankTimeline
 import com.coachchicken.core.PlankTracker
 import com.coachchicken.core.PoseLog
@@ -14,7 +17,9 @@ import com.coachchicken.core.PoseReading
 import com.coachchicken.core.SessionRecord
 import com.coachchicken.core.buildCalendar
 import com.coachchicken.core.completedSessionTimes
-import com.coachchicken.core.readPlank
+import com.coachchicken.core.gradePlank
+import com.coachchicken.core.lockTarget
+import com.coachchicken.core.plankHip
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,16 +35,22 @@ import java.time.ZoneId
 /** HOME: calendar and Start session. READY: in a session, waiting for the plank. PLANKING: timing. DONE: reached the goal. */
 enum class Phase { HOME, READY, PLANKING, DONE }
 
-/** The latest camera reading, for drawing the skeleton and the status line. */
+/** The latest camera reading, for drawing the skeleton, the goal zone and the status line. */
 data class PoseUi(
     val landmarks: List<Landmark>,
     val aspect: Float,
-    val reading: PoseReading,
+    val grade: PlankGrade,
     val holdProgress: Float,
     /** While the plank is lapsing and has been warned about: how long until it ends, ms. Otherwise null. */
     val endsInMs: Long? = null,
     /** The camera-session clock, the same as the log's t_ms (shown on screen so a screen recording lines up). */
     val logMs: Long = 0,
+    /** 0..1 gold aura: builds while the plank is perfect. */
+    val aura: Float = 0f,
+    /** The green goal zone, once a plank has been seen. */
+    val target: PlankTarget? = null,
+    /** Whether the hip is inside [target] (null when there's no target or no body). */
+    val hipInZone: Boolean? = null,
 )
 
 data class UiState(
@@ -59,6 +70,9 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
     private val sounds = SoundPlayer(app)
     private val tracker = PlankTracker()
     private val poseLog = PoseLog()
+    private val aura = AuraMeter()
+    private var target: PlankTarget? = null
+    private var targetFrozen = false
     private var cameraStartedAt = 0L
 
     private val _state = MutableStateFlow(UiState(goalMs = timeline.durationMs, calendar = loadCalendar()))
@@ -87,15 +101,23 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
     fun openSession(camera: Boolean) {
         if (_state.value.phase != Phase.HOME) return
         tracker.reset()
+        resetGoal()
         cameraStartedAt = SystemClock.elapsedRealtime()
         poseLog.clear("camera=${if (_state.value.frontCamera) "front" else "back"} on=$camera app=${BuildConfig.VERSION_NAME} (t_ms is the on-screen t= clock)")
         _state.update { it.copy(phase = Phase.READY, elapsedMs = 0, cameraOn = camera, pose = null) }
+    }
+
+    private fun resetGoal() {
+        aura.reset()
+        target = null
+        targetFrozen = false
     }
 
     /** Leave the session without planking. */
     fun closeSession() {
         if (_state.value.phase != Phase.READY) return
         tracker.reset()
+        resetGoal()
         _state.update { it.copy(phase = Phase.HOME, cameraOn = false, pose = null) }
     }
 
@@ -110,6 +132,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
         startedAt = Instant.now()
         startedRealtime = SystemClock.elapsedRealtime()
         poseLog.addEvent(cameraMs(), "PLANK_START")
+        targetFrozen = target != null // the green zone stops following you once the timer runs
         // Button start while the camera is on: let the tracker know, so getting up is still noticed.
         if (_state.value.cameraOn && !tracker.active) tracker.startedExternally()
         sounds.startQuietLoop()
@@ -150,6 +173,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
         store.append(SessionRecord("plank", startedAt, elapsed, completed))
         poseLog.addEvent(cameraMs(), "PLANK_END completed=$completed elapsedMs=$elapsed")
         tracker.reset()
+        resetGoal()
         _state.update {
             it.copy(
                 phase = if (completed) Phase.DONE else Phase.READY,
@@ -179,9 +203,23 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
             val before = _state.value
             if (!before.cameraOn || (before.phase != Phase.READY && before.phase != Phase.PLANKING)) return@launch
             val now = SystemClock.elapsedRealtime()
-            val reading = if (landmarks == null) PoseReading.NO_BODY else readPlank(landmarks, aspect)
-            poseLog.addFrame(cameraMs(), before.phase.name, landmarks, aspect, reading)
-            when (tracker.update(now, reading)) {
+            val grade = if (landmarks == null) PlankGrade.NO_BODY else gradePlank(landmarks, aspect)
+            val isPlank = grade.reading == PoseReading.PLANK
+            val event = tracker.update(now, grade.reading)
+            val auraNow = aura.update(now, grade == PlankGrade.PERFECT)
+
+            // The green goal zone follows you while you settle into position, then freezes once the timer runs.
+            if (landmarks != null && isPlank && !targetFrozen) {
+                target = lockTarget(landmarks, aspect)
+                if (before.phase == Phase.PLANKING && target != null) targetFrozen = true
+            } else if (!isPlank && !targetFrozen && tracker.smoothed < 0.3f) {
+                target = null
+            }
+            val hip = landmarks?.let { plankHip(it) }
+            val offset = if (target != null && hip != null) target!!.offset(hip, aspect) else null
+
+            poseLog.addFrame(cameraMs(), before.phase.name, landmarks, aspect, grade, tracker.smoothed, auraNow, offset)
+            when (event) {
                 PlankTracker.Event.STARTED -> {
                     poseLog.addEvent(cameraMs(), "TRACKER_STARTED")
                     if (before.phase == Phase.READY) startPlank()
@@ -205,7 +243,14 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
             if (after.cameraOn && (after.phase == Phase.READY || after.phase == Phase.PLANKING)) {
                 val endsIn = if (tracker.isWarning) (tracker.endGraceMs - tracker.lapseMs(now)).coerceAtLeast(0) else null
                 _state.update {
-                    it.copy(pose = PoseUi(landmarks.orEmpty(), aspect, reading, tracker.holdProgress(now), endsIn, cameraMs()))
+                    it.copy(
+                        pose = PoseUi(
+                            landmarks.orEmpty(), aspect, grade, tracker.holdProgress(now), endsIn, cameraMs(),
+                            aura = auraNow,
+                            target = target,
+                            hipInZone = if (target != null && hip != null) target!!.contains(hip, aspect) else null,
+                        ),
+                    )
                 }
             }
         }

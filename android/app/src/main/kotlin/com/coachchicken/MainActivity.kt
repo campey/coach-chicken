@@ -12,12 +12,16 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -79,33 +83,36 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Leaving the foreground winds the session up (no foreground service yet).
+    // Leaving the foreground winds the session up (no foreground service yet). Rotating is not leaving.
     override fun onStop() {
         super.onStop()
-        vm.onAppStopped()
+        if (!isChangingConfigurations) vm.onAppStopped()
     }
 }
 
 @Composable
 private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onDone: () -> Unit, onCopyLog: (() -> Unit)?) {
-    Column(
-        Modifier.fillMaxSize().systemBarsPadding().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 56.dp, height = 110.dp))
-        Text("Coach Chicken", style = MaterialTheme.typography.headlineMedium)
-        if (state.phase == Phase.DONE) {
-            Text("Plank done! 🥚 ${formatElapsed(state.elapsedMs)}", style = MaterialTheme.typography.titleLarge)
-        }
-        CalendarView(state.calendar, Modifier.fillMaxWidth())
-        if (state.phase == Phase.DONE) {
-            Button(onDone, Modifier.fillMaxWidth()) { Text("OK") }
-        } else {
-            Button(onStartSession, Modifier.fillMaxWidth()) { Text("Start session") }
-        }
-        if (onCopyLog != null) {
-            OutlinedButton(onCopyLog, Modifier.fillMaxWidth()) { Text("Copy pose log") }
+    // Scrolls when it doesn't fit (landscape), and is centred when it does.
+    BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding()) {
+        Column(
+            Modifier.fillMaxWidth().heightIn(min = maxHeight).verticalScroll(rememberScrollState()).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 56.dp, height = 110.dp))
+            Text("Coach Chicken", style = MaterialTheme.typography.headlineMedium)
+            if (state.phase == Phase.DONE) {
+                Text("Plank done! 🥚 ${formatElapsed(state.elapsedMs)}", style = MaterialTheme.typography.titleLarge)
+            }
+            CalendarView(state.calendar, Modifier.fillMaxWidth())
+            if (state.phase == Phase.DONE) {
+                Button(onDone, Modifier.fillMaxWidth()) { Text("OK") }
+            } else {
+                Button(onStartSession, Modifier.fillMaxWidth()) { Text("Start session") }
+            }
+            if (onCopyLog != null) {
+                OutlinedButton(onCopyLog, Modifier.fillMaxWidth()) { Text("Copy pose log") }
+            }
         }
     }
 }

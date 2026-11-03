@@ -1,88 +1,107 @@
 package com.coachchicken.core
 
+import kotlin.math.exp
+
 /**
- * Turns noisy per-frame [PoseReading]s into start/stop events.
- *  - Start: a plank must be held for [startHoldMs].
- *  - Stop: the plank must be lost for [endGraceMs] (a debounce / low-pass filter), so adjusting your form or a
- *    dropped frame or two doesn't end it.
- *  - Warning: once a lapse has lasted [warnAfterMs] a single WARNING is raised, so you can get back in time;
- *    if you then get back, RECOVERED is raised (so the warning can be silenced).
- *  - A lapse is only forgiven once the plank has been back for [recoverHoldMs]; a brief false "plank"
- *    reading while getting up must not restart the grace period.
- * When a plank ends, [lastEndedLostAtMs] is when it was last held (the start of the lapse).
+ * Turns noisy per-frame [PoseReading]s into start/stop events with a low-pass filter.
+ *
+ * Each frame is 1 (plank) or 0 (not); an exponential moving average [smoothed] (time constant [filterTauMs]) is
+ * the filter. Because it is an average rather than "N frames in a row", scattered bad frames inside a good plank
+ * (a loose sleeve, a wobbly joint) barely move it, which is what a real plank looks like to a pose detector.
+ *  - Start: [smoothed] stays at or above [startAbove] for [startHoldMs].
+ *  - Lapse: [smoothed] falls below [lapseBelow]. The lapse is dated from the last frame that WAS a plank.
+ *  - Warning: a single WARNING [warnAfterMs] into a lapse (if the current frame is still not a plank).
+ *  - Recovered: [smoothed] climbs back to [recoverAbove] (hysteresis: higher than [lapseBelow]); RECOVERED is
+ *    raised if a warning had been given, so it can be silenced.
+ *  - Stop: the lapse lasts [endGraceMs]; [lastEndedLostAtMs] is then when the plank was last held.
  */
 class PlankTracker(
-    private val startHoldMs: Long = 1_500,
+    private val startHoldMs: Long = 1_000,
     val endGraceMs: Long = 3_000,
-    private val recoverHoldMs: Long = 500,
     private val warnAfterMs: Long = 1_000,
+    private val filterTauMs: Long = 700,
+    private val startAbove: Float = 0.7f,
+    private val lapseBelow: Float = 0.45f,
+    private val recoverAbove: Float = 0.65f,
 ) {
     enum class Event { STARTED, ENDED, WARNING, RECOVERED }
 
     var active = false
         private set
-    private var plankSince: Long? = null
-    private var lostSince: Long? = null
-    private var recoverSince: Long? = null
-    private var awaitingFirstPlank = false
-    private var warned = false
+
+    /** The low-passed "how plank-like is it" signal, 0..1. */
+    var smoothed = 0f
+        private set
 
     /** Start of the lapse that ended the most recent plank (null until one has ended). */
     var lastEndedLostAtMs: Long? = null
         private set
 
+    private var lastUpdateMs: Long? = null
+    private var lastPlankAtMs: Long? = null
+    private var armedSince: Long? = null
+    private var lostSince: Long? = null
+    private var warned = false
+    private var awaitingFirstPlank = false
+
     fun update(nowMs: Long, reading: PoseReading): Event? {
         val inPlank = reading == PoseReading.PLANK
+        val x = if (inPlank) 1f else 0f
+        val previous = lastUpdateMs
+        smoothed = if (previous == null) x
+        else smoothed + (x - smoothed) * (1f - exp(-(nowMs - previous).coerceAtLeast(0).toFloat() / filterTauMs))
+        lastUpdateMs = nowMs
+        if (inPlank) lastPlankAtMs = nowMs
+
         if (!active) {
-            if (!inPlank) {
-                plankSince = null
+            if (smoothed < startAbove) {
+                armedSince = null
                 return null
             }
-            val since = plankSince ?: nowMs.also { plankSince = it }
+            val since = armedSince ?: nowMs.also { armedSince = it }
             if (nowMs - since >= startHoldMs) {
                 active = true
-                plankSince = null
+                armedSince = null
                 lostSince = null
+                warned = false
                 return Event.STARTED
             }
             return null
         }
+
         if (awaitingFirstPlank) {
-            // Started from a button: don't treat "not in position yet" as getting up.
-            if (inPlank) {
-                val since = recoverSince ?: nowMs.also { recoverSince = it }
-                if (nowMs - since >= recoverHoldMs) {
-                    awaitingFirstPlank = false
-                    recoverSince = null
-                }
+            // Started from a button: don't treat "not in position yet" as getting up. Armed once a plank has
+            // been held for the same [startHoldMs] as a camera start, so a single stray frame can't arm it.
+            if (smoothed < startAbove) {
+                armedSince = null
             } else {
-                recoverSince = null
+                val since = armedSince ?: nowMs.also { armedSince = it }
+                if (nowMs - since >= startHoldMs) {
+                    awaitingFirstPlank = false
+                    armedSince = null
+                }
             }
             return null
         }
-        if (inPlank) {
-            if (lostSince != null) {
-                val since = recoverSince ?: nowMs.also { recoverSince = it }
-                if (nowMs - since >= recoverHoldMs) {
-                    lostSince = null
-                    recoverSince = null
-                    val wasWarned = warned
-                    warned = false
-                    if (wasWarned) return Event.RECOVERED
-                }
+
+        if (lostSince == null) {
+            if (smoothed < lapseBelow) {
+                lostSince = lastPlankAtMs ?: nowMs
+                warned = false
             }
-        } else {
-            recoverSince = null
-            if (lostSince == null) lostSince = nowMs
+        } else if (smoothed >= recoverAbove) {
+            lostSince = null
+            val wasWarned = warned
+            warned = false
+            if (wasWarned) return Event.RECOVERED
         }
+
         val lost = lostSince
         if (lost != null) {
             if (nowMs - lost >= endGraceMs) {
                 active = false
                 lastEndedLostAtMs = lost
                 lostSince = null
-                recoverSince = null
-                plankSince = null
                 warned = false
                 return Event.ENDED
             }
@@ -94,12 +113,6 @@ class PlankTracker(
         return null
     }
 
-    /** True while a lapse has been warned about and the plank hasn't yet recovered or ended. */
-    val isWarning: Boolean get() = active && warned && lostSince != null
-
-    /** How long the current lapse has lasted (0 when the plank is fine). */
-    fun lapseMs(nowMs: Long): Long = lostSince?.let { nowMs - it } ?: 0L
-
     /**
      * The plank was started some other way (a button). The tracker then watches for the plank to be
      * seen and only afterwards for it to end, so getting into position never counts as getting up.
@@ -110,16 +123,27 @@ class PlankTracker(
         awaitingFirstPlank = true
     }
 
-    /** 0..1: how far through the start hold we are (1 once a plank has started). */
-    fun holdProgress(nowMs: Long): Float =
-        if (active) 1f else plankSince?.let { ((nowMs - it) / startHoldMs.toFloat()).coerceIn(0f, 1f) } ?: 0f
+    /** True while a lapse has been warned about and the plank hasn't yet recovered or ended. */
+    val isWarning: Boolean get() = active && warned && lostSince != null
+
+    /** How long the current lapse has lasted (0 when the plank is fine). */
+    fun lapseMs(nowMs: Long): Long = lostSince?.let { nowMs - it } ?: 0L
+
+    /** 0..1: how far we are towards starting (1 once a plank has started). */
+    fun holdProgress(nowMs: Long): Float = when {
+        active -> 1f
+        armedSince != null -> 0.5f + 0.5f * ((nowMs - armedSince!!) / startHoldMs.toFloat()).coerceIn(0f, 1f)
+        else -> (0.5f * smoothed / startAbove).coerceIn(0f, 0.5f)
+    }
 
     fun reset() {
         active = false
-        plankSince = null
+        smoothed = 0f
+        lastUpdateMs = null
+        lastPlankAtMs = null
+        armedSince = null
         lostSince = null
-        recoverSince = null
-        awaitingFirstPlank = false
         warned = false
+        awaitingFirstPlank = false
     }
 }

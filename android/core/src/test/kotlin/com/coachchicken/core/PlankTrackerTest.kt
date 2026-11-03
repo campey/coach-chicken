@@ -2,122 +2,172 @@ package com.coachchicken.core
 
 import com.coachchicken.core.PlankTracker.Event
 import com.coachchicken.core.PoseReading.NOT_PLANK
-import com.coachchicken.core.PoseReading.NO_BODY
 import com.coachchicken.core.PoseReading.PLANK
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+/** Frames arrive ~every 100ms here (the real camera is faster, which only smooths things further). */
 class PlankTrackerTest {
-    private fun PlankTracker.feed(vararg steps: Pair<Long, PoseReading>) = steps.map { (t, r) -> update(t, r) }
+    private class Run(val tracker: PlankTracker = PlankTracker()) {
+        val events = mutableListOf<Pair<Long, Event>>()
 
-    @Test fun startsAfterTheHold() {
-        val t = PlankTracker()
-        assertEquals(listOf(null, null, Event.STARTED), t.feed(0L to PLANK, 1_000L to PLANK, 1_500L to PLANK))
-        assertTrue(t.active)
+        fun feed(from: Long, to: Long, reading: PoseReading, step: Long = 100) {
+            var t = from
+            while (t <= to) {
+                tracker.update(t, reading)?.let { events += t to it }
+                t += step
+            }
+        }
+
+        fun feedPattern(from: Long, to: Long, step: Long = 100, reading: (Int) -> PoseReading) {
+            var t = from
+            var i = 0
+            while (t <= to) {
+                tracker.update(t, reading(i++))?.let { events += t to it }
+                t += step
+            }
+        }
+
+        val kinds get() = events.map { it.second }
+        fun at(e: Event) = events.first { it.second == e }.first
     }
 
-    @Test fun aBlipResetsTheHold() {
-        val t = PlankTracker()
-        t.feed(0L to PLANK, 1_000L to NOT_PLANK)
-        assertNull(t.update(1_500L, PLANK))
-        assertNull(t.update(2_900L, PLANK))
-        assertEquals(Event.STARTED, t.update(3_000L, PLANK))
+    // --- starting ------------------------------------------------------------------------
+
+    @Test fun startsAfterAHeldPlank() {
+        val r = Run()
+        r.feed(0, 3_000, PLANK)
+        assertEquals(listOf(Event.STARTED), r.kinds)
+        assertTrue(r.at(Event.STARTED) in 800..2_200, "started at ${r.at(Event.STARTED)}")
+        assertTrue(r.tracker.active)
     }
 
-    @Test fun briefDropoutDoesNotEnd() {
-        val t = PlankTracker()
-        t.feed(0L to PLANK, 1_500L to PLANK)
-        assertNull(t.update(2_000L, NO_BODY))
-        assertNull(t.update(2_900L, NOT_PLANK))
-        assertNull(t.update(3_000L, PLANK)) // recovering...
-        assertNull(t.update(3_600L, PLANK)) // ...back for 0.6s: the lapse is forgiven
-        assertNull(t.update(5_000L, NOT_PLANK))
-        assertNull(t.update(5_900L, NOT_PLANK)) // a fresh lapse, only 0.9s old
-        assertTrue(t.active)
+    @Test fun aBlipDoesNotStart() {
+        val r = Run()
+        r.feed(0, 200, PLANK)
+        r.feed(300, 5_000, NOT_PLANK)
+        assertTrue(r.events.isEmpty())
+        assertTrue(!r.tracker.active)
     }
 
-    @Test fun endsAfterTheGracePeriod() {
-        val t = PlankTracker()
-        t.feed(0L to PLANK, 1_500L to PLANK)
-        assertNull(t.update(2_000L, NOT_PLANK))
-        assertEquals(Event.WARNING, t.update(3_000L, NOT_PLANK))
-        assertNull(t.update(4_900L, NOT_PLANK))
-        assertEquals(Event.ENDED, t.update(5_000L, NOT_PLANK)) // 3s after the lapse began
-        assertTrue(!t.active)
+    @Test fun halfBadFramesWhileGettingIntoPositionDoNotStart() {
+        val r = Run()
+        r.feedPattern(0, 10_000) { if (it % 2 == 0) PLANK else NOT_PLANK }
+        assertTrue(r.events.isEmpty())
     }
 
-    @Test fun needsAFreshHoldAfterEnding() {
-        val t = PlankTracker()
-        t.feed(0L to PLANK, 1_500L to PLANK, 2_000L to NOT_PLANK, 3_000L to NOT_PLANK, 5_000L to NOT_PLANK)
-        assertNull(t.update(6_000L, PLANK))
-        assertEquals(Event.STARTED, t.update(7_500L, PLANK))
+    // --- the low-pass filter: scattered bad frames inside a plank --------------------------
+
+    @Test fun aThirdOfFramesBeingBadNeverEndsAPlank() {
+        // the real-phone failure: a good plank with scattered NOT_PLANK frames kept "restarting" a lapse
+        val r = Run()
+        r.feed(0, 1_500, PLANK)
+        r.feedPattern(1_600, 60_000) { if (it % 3 == 0) NOT_PLANK else PLANK }
+        assertEquals(listOf(Event.STARTED), r.kinds)
+        assertTrue(r.tracker.active)
     }
 
-    @Test fun holdProgress() {
-        val t = PlankTracker()
-        assertEquals(0f, t.holdProgress(0))
-        t.update(1_000L, PLANK)
-        assertEquals(0.5f, t.holdProgress(1_750L))
-        t.update(2_500L, PLANK)
-        assertEquals(1f, t.holdProgress(2_500L))
+    @Test fun clustersOfBadFramesUnderAHalfSecondAreIgnored() {
+        val r = Run()
+        r.feed(0, 1_500, PLANK)
+        for (k in 0 until 20) { // every 2s: 0.4s of bad frames
+            val t0 = 2_000L + k * 2_000
+            r.feed(t0, t0 + 400, NOT_PLANK)
+            r.feed(t0 + 500, t0 + 1_900, PLANK)
+        }
+        assertEquals(listOf(Event.STARTED), r.kinds)
     }
 
-    @Test fun aBriefFalsePlankWhileGettingUpDoesNotRestartTheGrace() {
-        val t = PlankTracker()
-        t.feed(0L to PLANK, 1_500L to PLANK)
-        assertNull(t.update(10_000L, NOT_PLANK)) // starts getting up
-        assertNull(t.update(11_000L, PLANK))     // 0.2s blip that looks like a plank
-        assertEquals(Event.WARNING, t.update(11_200L, NOT_PLANK))
-        assertNull(t.update(12_900L, NOT_PLANK))
-        assertEquals(Event.ENDED, t.update(13_000L, NOT_PLANK)) // still ends 3s after the first lapse
+    // --- a real lapse -------------------------------------------------------------------
+
+    @Test fun aRealLapseWarnsThenEndsThreeSecondsAfterTheLastGoodFrame() {
+        val r = Run()
+        r.feed(0, 5_000, PLANK)
+        r.feed(5_100, 12_000, NOT_PLANK)
+        assertEquals(listOf(Event.STARTED, Event.WARNING, Event.ENDED), r.kinds)
+        assertEquals(6_000L, r.at(Event.WARNING))  // 1s after the last good frame
+        assertEquals(8_000L, r.at(Event.ENDED))    // 3s after it
+        assertEquals(5_000L, r.tracker.lastEndedLostAtMs) // back-dated to when the plank was last held
+        assertTrue(!r.tracker.active)
     }
 
-    @Test fun remembersWhenThePlankWasLastHeld() {
-        val t = PlankTracker()
-        assertNull(t.lastEndedLostAtMs)
-        t.feed(0L to PLANK, 1_500L to PLANK, 10_000L to NOT_PLANK, 13_000L to NOT_PLANK)
-        assertEquals(10_000L, t.lastEndedLostAtMs)
+    @Test fun aBriefDropoutRaisesNothing() {
+        val r = Run()
+        r.feed(0, 5_000, PLANK)
+        r.feed(5_100, 5_600, NOT_PLANK) // 0.6s
+        r.feed(5_700, 15_000, PLANK)
+        assertEquals(listOf(Event.STARTED), r.kinds)
+        assertTrue(r.tracker.active)
     }
 
-    @Test fun lapseThatRecoversFullyStartsFreshNextTime() {
-        val t = PlankTracker()
-        t.feed(0L to PLANK, 1_500L to PLANK, 3_000L to NOT_PLANK, 3_500L to PLANK, 4_100L to PLANK)
-        assertNull(t.update(6_000L, NOT_PLANK))  // new lapse starts at 6.0s, not 3.0s
-        assertEquals(Event.WARNING, t.update(7_000L, NOT_PLANK))
-        assertNull(t.update(8_900L, NOT_PLANK))
-        assertEquals(Event.ENDED, t.update(9_000L, NOT_PLANK))
-        assertEquals(6_000L, t.lastEndedLostAtMs)
+    @Test fun gettingBackWithinTheGraceSilencesTheWarning() {
+        val r = Run()
+        r.feed(0, 5_000, PLANK)
+        r.feed(5_100, 6_500, NOT_PLANK) // lapse, warned at 6.0s
+        r.feed(6_600, 12_000, PLANK)
+        assertEquals(listOf(Event.STARTED, Event.WARNING, Event.RECOVERED), r.kinds)
+        assertTrue(r.tracker.active)
+        assertTrue(!r.tracker.isWarning)
     }
+
+    @Test fun warnsAgainOnTheNextLapse() {
+        val r = Run()
+        r.feed(0, 5_000, PLANK)
+        r.feed(5_100, 6_500, NOT_PLANK)
+        r.feed(6_600, 12_000, PLANK)
+        r.feed(12_100, 13_500, NOT_PLANK)
+        assertEquals(listOf(Event.STARTED, Event.WARNING, Event.RECOVERED, Event.WARNING), r.kinds)
+    }
+
+    @Test fun needsAFreshStartAfterEnding() {
+        val r = Run()
+        r.feed(0, 5_000, PLANK)
+        r.feed(5_100, 9_000, NOT_PLANK) // ended
+        r.feed(9_100, 9_500, PLANK)
+        assertTrue(!r.tracker.active)
+        r.feed(9_600, 12_000, PLANK)
+        assertEquals(listOf(Event.STARTED, Event.WARNING, Event.ENDED, Event.STARTED), r.kinds)
+    }
+
+    @Test fun lapseIsReportedWhileItHappens() {
+        val r = Run()
+        r.feed(0, 5_000, PLANK)
+        r.feed(5_100, 6_200, NOT_PLANK)
+        assertEquals(1_200L, r.tracker.lapseMs(6_200))
+        assertTrue(r.tracker.isWarning)
+        assertEquals(3_000L, r.tracker.endGraceMs)
+    }
+
+    // --- started from a button ----------------------------------------------------------
 
     @Test fun buttonStartDoesNotEndWhileGettingIntoPosition() {
-        val t = PlankTracker()
-        t.startedExternally()
-        assertTrue(t.active)
-        assertNull(t.update(0L, NOT_PLANK))
-        assertNull(t.update(10_000L, NOT_PLANK)) // still getting down, well past the grace period
-        assertNull(t.update(30_000L, NO_BODY))
-        assertTrue(t.active)
+        val r = Run()
+        r.tracker.startedExternally()
+        assertTrue(r.tracker.active)
+        r.feed(0, 30_000, NOT_PLANK) // far past the grace period, still getting down
+        assertTrue(r.events.isEmpty())
+        assertTrue(r.tracker.active)
     }
 
     @Test fun buttonStartThenPlankSeenThenGettingUpEnds() {
-        val t = PlankTracker()
-        t.startedExternally()
-        t.feed(5_000L to PLANK, 5_600L to PLANK) // seen for 0.6s: armed
-        assertNull(t.update(20_000L, NOT_PLANK))
-        assertEquals(Event.WARNING, t.update(22_000L, NOT_PLANK))
-        assertEquals(Event.ENDED, t.update(23_000L, NOT_PLANK))
-        assertEquals(20_000L, t.lastEndedLostAtMs)
+        val r = Run()
+        r.tracker.startedExternally()
+        r.feed(0, 5_000, NOT_PLANK)
+        r.feed(5_100, 20_000, PLANK)
+        r.feed(20_100, 30_000, NOT_PLANK)
+        assertEquals(listOf(Event.WARNING, Event.ENDED), r.kinds)
+        assertEquals(20_000L, r.tracker.lastEndedLostAtMs)
     }
 
     @Test fun aSingleFalsePlankFrameDoesNotArmAButtonStart() {
-        val t = PlankTracker()
-        t.startedExternally()
-        t.feed(1_000L to PLANK, 1_100L to NOT_PLANK) // blip
-        assertNull(t.update(9_000L, NOT_PLANK))
-        assertNull(t.update(20_000L, NOT_PLANK))
-        assertTrue(t.active)
+        val r = Run()
+        r.tracker.startedExternally()
+        r.feed(1_000, 1_100, PLANK) // blip
+        r.feed(1_200, 30_000, NOT_PLANK)
+        assertTrue(r.events.isEmpty())
+        assertTrue(r.tracker.active)
     }
 
     @Test fun resetDisarms() {
@@ -128,69 +178,28 @@ class PlankTrackerTest {
         assertNull(t.update(0L, NOT_PLANK))
     }
 
-    // --- the warning ---------------------------------------------------------------------
+    // --- signals for the UI ----------------------------------------------------------------
 
-    @Test fun warnsOnceAboutASecondIntoALapse() {
-        val t = PlankTracker()
-        t.feed(0L to PLANK, 1_500L to PLANK)
-        assertNull(t.update(5_000L, NOT_PLANK))
-        assertNull(t.update(5_900L, NOT_PLANK))
-        assertEquals(Event.WARNING, t.update(6_000L, NOT_PLANK))
-        assertTrue(t.isWarning)
-        assertNull(t.update(7_000L, NOT_PLANK)) // not repeated
-        assertNull(t.update(7_900L, NOT_PLANK))
+    @Test fun holdProgressRisesToOneOnceStarted() {
+        val r = Run()
+        assertEquals(0f, r.tracker.holdProgress(0))
+        var last = 0f
+        var t = 0L
+        while (!r.tracker.active) {
+            r.tracker.update(t, PLANK)
+            val p = r.tracker.holdProgress(t)
+            assertTrue(p >= last, "progress went backwards at $t: $last -> $p")
+            last = p
+            t += 100
+        }
+        assertEquals(1f, r.tracker.holdProgress(t))
     }
 
-    @Test fun noWarningForABriefAdjustment() {
-        val t = PlankTracker()
-        t.feed(0L to PLANK, 1_500L to PLANK)
-        assertNull(t.update(5_000L, NOT_PLANK))
-        assertNull(t.update(5_700L, NOT_PLANK)) // wobbled for 0.7s...
-        assertNull(t.update(5_800L, PLANK))
-        assertNull(t.update(6_400L, PLANK))     // ...and is back
-        assertTrue(!t.isWarning)
-    }
-
-    @Test fun warnsAgainOnTheNextLapse() {
-        val t = PlankTracker()
-        t.feed(0L to PLANK, 1_500L to PLANK, 5_000L to NOT_PLANK)
-        assertEquals(Event.WARNING, t.update(6_000L, NOT_PLANK))
-        t.feed(6_500L to PLANK, 7_100L to PLANK) // recovered
-        assertTrue(!t.isWarning)
-        t.update(10_000L, NOT_PLANK)
-        assertEquals(Event.WARNING, t.update(11_000L, NOT_PLANK))
-    }
-
-    @Test fun noWarningWhileAButtonStartIsStillGettingIntoPosition() {
-        val t = PlankTracker()
-        t.startedExternally()
-        assertNull(t.update(0L, NOT_PLANK))
-        assertNull(t.update(5_000L, NOT_PLANK))
-        assertTrue(!t.isWarning)
-    }
-
-    @Test fun lapseLengthIsReported() {
-        val t = PlankTracker()
-        t.feed(0L to PLANK, 1_500L to PLANK)
-        assertEquals(0L, t.lapseMs(2_000L))
-        t.update(5_000L, NOT_PLANK)
-        assertEquals(1_200L, t.lapseMs(6_200L))
-        assertEquals(3_000L, t.endGraceMs)
-    }
-
-    @Test fun recoveringAfterAWarningRaisesRecoveredOnce() {
-        val t = PlankTracker()
-        t.feed(0L to PLANK, 1_500L to PLANK, 5_000L to NOT_PLANK)
-        assertEquals(Event.WARNING, t.update(6_000L, NOT_PLANK))
-        assertNull(t.update(6_500L, PLANK))                       // recovering...
-        assertEquals(Event.RECOVERED, t.update(7_100L, PLANK))    // ...back for 0.6s
-        assertNull(t.update(7_600L, PLANK))
-        assertTrue(!t.isWarning)
-    }
-
-    @Test fun noRecoveredWithoutAWarning() {
-        val t = PlankTracker()
-        t.feed(0L to PLANK, 1_500L to PLANK, 5_000L to NOT_PLANK, 5_300L to PLANK)
-        assertNull(t.update(5_900L, PLANK))
+    @Test fun smoothedSignalTracksPlankiness() {
+        val r = Run()
+        r.feed(0, 3_000, PLANK)
+        assertTrue(r.tracker.smoothed > 0.95f)
+        r.feed(3_100, 6_000, NOT_PLANK)
+        assertTrue(r.tracker.smoothed < 0.1f)
     }
 }
