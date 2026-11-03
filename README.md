@@ -29,6 +29,7 @@ A plank timer that clucks at you, and watches you plank.
     * **Green goal zone**: once a plank is seen, a green corridor along the ideal straight body line (shoulder to ankle; through the hip if your legs are out of frame) is the goal for the yellow. It follows you while you settle, then freezes when the timer starts. The hip being judged turns green while it is inside.
  3. **At 60s**: a squawk, the quiet clucking stops, and the timer counts up past the goal in gold. The plank is *not* stopped: the button becomes **Done**.
  4. **Ending**: press **Stop/Done**, or just get up. The camera low-pass filters its readings (so scattered bad frames inside a good plank, a loose jersey or a wobbly joint, don't matter) and a lapse has to last **3s** before the plank ends. About 1s into a lapse a long, building **"bwaaaak!"** starts and the status shows a countdown; get back into plank and it cuts off. If the 3s runs out the plank ends, back-dated to when you left it. 60s or more counts and earns the egg; ending earlier is logged as incomplete and leaves you in the session to try again.
+ In landscape the controls sit along the top (next to the timer) so the bottom of the picture, where your forearms are, stays clear.
  Camera permission refused? The session still works with the buttons. Leaving the app winds the session up.
 
 Later: plank form feedback ("pakak" when it's wrong).

@@ -108,10 +108,34 @@ fun SessionScreen(
                     "t=%.1fs".format(it.logMs / 1000.0),
                     color = Color.White,
                     style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.align(Alignment.TopEnd).systemBarsPadding().padding(8.dp)
+                    modifier = Modifier.align(Alignment.TopEnd).systemBarsPadding()
+                        .padding(top = if (landscape) 76.dp else 0.dp).padding(8.dp) // clear of the timer in landscape
                         .background(Scrim, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
                 )
             }
+        }
+
+        val primaryLabel = if (state.phase == Phase.READY) "Start plank" else if (reached) "Done" else "Stop"
+        val primaryClick = if (state.phase == Phase.READY) onStartPlank else onEnd
+        val outlined = ButtonDefaults.outlinedButtonColors(containerColor = scrim, contentColor = fg)
+        val extraButtons: @Composable RowScope.() -> Unit = {
+            if (state.phase == Phase.READY) {
+                OutlinedButton(onClose, Modifier.weight(1f), colors = outlined) { Text("Close") }
+            }
+            if (onCam) {
+                OutlinedButton(onFlip, Modifier.weight(1f), colors = outlined) { Text(if (state.frontCamera) "Rear cam" else "Front cam") }
+            }
+            if (onCam && onCopyLog != null) {
+                OutlinedButton(onCopyLog, Modifier.weight(1f), colors = outlined) { Text("Copy log") }
+            }
+        }
+        val timer: @Composable () -> Unit = {
+            Text(
+                if (reached) "+" + formatElapsed(state.elapsedMs - state.goalMs) else formatTime(state.goalMs - state.elapsedMs),
+                fontSize = if (landscape) 44.sp else 72.sp,
+                color = if (reached) Gold else fg,
+                modifier = Modifier.background(scrim, RoundedCornerShape(16.dp)).padding(horizontal = 20.dp),
+            )
         }
 
         Column(
@@ -122,13 +146,18 @@ fun SessionScreen(
                 if (!onCam && !landscape) {
                     Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 56.dp, height = 110.dp))
                 }
-                if (state.phase == Phase.PLANKING) {
-                    Text(
-                        if (reached) "+" + formatElapsed(state.elapsedMs - state.goalMs) else formatTime(state.goalMs - state.elapsedMs),
-                        fontSize = if (landscape) 44.sp else 72.sp,
-                        color = if (reached) Gold else fg,
-                        modifier = Modifier.background(scrim, RoundedCornerShape(16.dp)).padding(horizontal = 20.dp),
-                    )
+                if (landscape) {
+                    // Planking on the floor puts the forearms and hands at the bottom of the picture, so in landscape
+                    // the controls go along the top, next to the timer, and the bottom stays clear.
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(primaryClick, Modifier.weight(2f)) { Text(primaryLabel) }
+                            extraButtons()
+                        }
+                        if (state.phase == Phase.PLANKING) timer()
+                    }
+                } else if (state.phase == Phase.PLANKING) {
+                    timer()
                 }
                 Text(
                     statusText(state, reached),
@@ -143,26 +172,7 @@ fun SessionScreen(
                 }
             }
 
-            val primaryLabel = if (state.phase == Phase.READY) "Start plank" else if (reached) "Done" else "Stop"
-            val primaryClick = if (state.phase == Phase.READY) onStartPlank else onEnd
-            val outlined = ButtonDefaults.outlinedButtonColors(containerColor = scrim, contentColor = fg)
-            val extraButtons: @Composable RowScope.() -> Unit = {
-                if (state.phase == Phase.READY) {
-                    OutlinedButton(onClose, Modifier.weight(1f), colors = outlined) { Text("Close") }
-                }
-                if (onCam) {
-                    OutlinedButton(onFlip, Modifier.weight(1f), colors = outlined) { Text(if (state.frontCamera) "Rear cam" else "Front cam") }
-                }
-                if (onCam && onCopyLog != null) {
-                    OutlinedButton(onCopyLog, Modifier.weight(1f), colors = outlined) { Text("Copy log") }
-                }
-            }
-            if (landscape) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(primaryClick, Modifier.weight(2f)) { Text(primaryLabel) }
-                    extraButtons()
-                }
-            } else {
+            if (!landscape) {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(primaryClick, Modifier.fillMaxWidth()) { Text(primaryLabel) }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { extraButtons() }
