@@ -10,6 +10,7 @@ data class Landmark(val x: Float, val y: Float, val visibility: Float = 1f)
 
 /** Indices into MediaPipe's 33-point pose model. */
 object PoseIdx {
+    const val NOSE = 0
     const val L_SHOULDER = 11; const val R_SHOULDER = 12
     const val L_ELBOW = 13; const val R_ELBOW = 14
     const val L_WRIST = 15; const val R_WRIST = 16

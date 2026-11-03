@@ -28,7 +28,7 @@ class SoundPlayer(context: Context) {
 
     fun startQuietLoop() = runCatching {
         stopQuietLoop()
-        loopStream = pool.play(quiet, 0.25f, 0.25f, 0, -1, 1f)
+        loopStream = pool.play(quiet, QUIET_LOOP_VOLUME, QUIET_LOOP_VOLUME, 0, -1, 1f)
     }
 
     fun stopQuietLoop() {
@@ -52,4 +52,9 @@ class SoundPlayer(context: Context) {
     }
 
     fun release() = pool.release()
+
+    private companion object {
+        /** The murmur stays well under the loud cluck, but is clearly audible (was 0.25, which was inaudible). */
+        const val QUIET_LOOP_VOLUME = 0.5f
+    }
 }

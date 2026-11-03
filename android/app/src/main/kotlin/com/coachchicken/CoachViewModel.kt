@@ -18,6 +18,7 @@ import com.coachchicken.core.SessionRecord
 import com.coachchicken.core.buildCalendar
 import com.coachchicken.core.completedSessionTimes
 import com.coachchicken.core.gradePlank
+import com.coachchicken.core.headOutOfFrame
 import com.coachchicken.core.lockTarget
 import com.coachchicken.core.plankHip
 import kotlinx.coroutines.Job
@@ -51,6 +52,8 @@ data class PoseUi(
     val target: PlankTarget? = null,
     /** Whether the hip is inside [target] (null when there's no target or no body). */
     val hipInZone: Boolean? = null,
+    /** The head is off the edge of the image: the phone is too close. */
+    val headOutOfFrame: Boolean = false,
 )
 
 data class UiState(
@@ -249,6 +252,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
                             aura = auraNow,
                             target = target,
                             hipInZone = if (target != null && hip != null) target!!.contains(hip, aspect) else null,
+                            headOutOfFrame = landmarks != null && grade != PlankGrade.NO_BODY && headOutOfFrame(landmarks),
                         ),
                     )
                 }

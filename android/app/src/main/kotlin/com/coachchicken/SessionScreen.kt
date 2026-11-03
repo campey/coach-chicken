@@ -193,6 +193,8 @@ private fun statusText(state: UiState, reached: Boolean): String = when {
     !state.cameraOn -> "Get into position, then tap Start plank."
     state.pose == null || state.pose.grade == PlankGrade.NO_BODY ->
         "Prop the phone so the camera sees you side-on, then plank (or tap Start plank)."
+    state.pose.headOutOfFrame ->
+        "Your head is out of frame. Move the phone further back, or turn it to landscape."
     state.pose.grade == PlankGrade.NOT_PLANK -> "Get into plank position."
     else -> "Hold it... then keep your hips in the green."
 }

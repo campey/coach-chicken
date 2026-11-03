@@ -77,6 +77,33 @@ def mix(parts, min_sec=0.0):
     return buf
 
 
+def louden(samples, active_rms_db, ceiling=0.98):
+    """Raise the average loudness without clipping: apply gain, then soft-limit (tanh) towards the ceiling.
+    Targets the RMS of the *active* parts (ignores near-silence), iterating because the limiter eats some of it."""
+    win = int(0.02 * RATE)
+    frames = [samples[i:i + win] for i in range(0, len(samples) - win, win)]
+
+    def active_rms(xs):
+        vals = [sum(v * v for v in f) / len(f) for f in frames_of(xs)]
+        act = [v for v in vals if v > 1e-5]
+        return math.sqrt(sum(act) / len(act)) if act else 1e-9
+
+    def frames_of(xs):
+        return [xs[i:i + win] for i in range(0, len(xs) - win, win)]
+
+    peak = max(abs(v) for v in samples) or 1.0
+    x = [v / peak for v in samples]
+    target = 10 ** (active_rms_db / 20)
+    gain = 1.0
+    for _ in range(40):
+        y = [ceiling * math.tanh(v * gain / ceiling) for v in x]
+        r = active_rms(y)
+        if abs(20 * math.log10(r / target)) < 0.1:
+            break
+        gain *= target / r
+    return y
+
+
 def write(name, samples, gain=0.9):
     peak = max(1e-9, max(abs(v) for v in samples))
     data = b"".join(struct.pack("<h", int(max(-1, min(1, v / peak * gain)) * 32767)) for v in samples)
@@ -89,19 +116,21 @@ def write(name, samples, gain=0.9):
 
 
 def main():
-    # Quiet loop: a gentle, irregular murmur of clucks. Loops seamlessly (ends in silence).
+    # Quiet loop: a steady, irregular murmur of clucks (about a third of the time clucking). Loops seamlessly.
     loop = mix([
-        (0.00, cluck(), 1.0), (0.17, cluck(0.09, 880, 360), 0.8),
-        (1.30, cluck(0.12, 1000, 400), 0.9),
-        (2.45, cluck(), 0.7), (2.62, cluck(0.09, 900, 350), 0.9), (2.78, cluck(0.08, 820, 340), 0.6),
-        (3.90, cluck(0.12, 960, 390), 0.8),
+        (0.00, cluck(), 1.0), (0.17, cluck(0.09, 880, 360), 0.8), (0.33, cluck(0.08, 820, 340), 0.6),
+        (0.80, cluck(0.12, 1000, 400), 0.9), (0.98, cluck(0.09, 900, 350), 0.7),
+        (1.55, cluck(0.12, 960, 390), 0.9), (1.72, cluck(), 0.7), (1.88, cluck(0.08, 840, 350), 0.8),
+        (2.45, cluck(), 0.8), (2.62, cluck(0.09, 900, 350), 0.9), (2.78, cluck(0.08, 820, 340), 0.6),
+        (3.30, cluck(0.12, 980, 400), 0.9), (3.48, cluck(0.09, 880, 360), 0.8),
+        (3.95, cluck(0.12, 960, 390), 0.8), (4.12, cluck(0.08, 860, 350), 0.7),
     ], min_sec=4.6)
-    write("cluck_quiet_loop", loop, gain=0.9)
+    write("cluck_quiet_loop", louden(loop, -15.0), gain=0.98)
     # A longer, louder, more insistent cluck-cluck-cluck.
     loud = mix([(0.0, cluck(0.14, 1100, 420), 1.0), (0.2, cluck(0.12, 1000, 400), 0.9), (0.38, cluck(0.12, 950, 380), 0.8)])
-    write("cluck_loud", loud, gain=1.0)
-    write("squawk", squawk(), gain=1.0)
-    write("bwaaak", bwaaak(), gain=1.0)
+    write("cluck_loud", louden(loud, -8.0), gain=0.98)
+    write("squawk", louden(squawk(), -8.0), gain=0.98)
+    write("bwaaak", louden(bwaaak(), -10.0), gain=0.98)
 
 
 if __name__ == "__main__":
