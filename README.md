@@ -49,11 +49,7 @@ The sounds in `app/src/main/res/raw/` are synthesized placeholders from `python 
 
 Download the latest APK from the [Releases page](https://github.com/campey/coach-chicken/releases/latest) and open it on an Android phone (8.0+, 64-bit ARM). You will be asked to allow installing from your browser or file manager.
 
-To cut a release, push a version tag; GitHub Actions runs the tests, builds the APK and publishes the release:
-
-```
-git tag v0.3.1 && git push origin v0.3.1
-```
+To cut a release, put the new version tag in the `RELEASE` file (for example `v0.3.1`), commit and push; GitHub Actions runs the tests, builds the APK and publishes the release. Pushing a git tag yourself (`git tag v0.3.1 && git push origin v0.3.1`) works too. A release that already exists is left alone.
 
 By default the APK is signed with a debug key. For a stable key (so phones can update across releases), create one and add four repository secrets:
 
