@@ -44,3 +44,22 @@ The sounds in `app/src/main/res/raw/` are synthesized placeholders from `python 
 
 ### Pose log
 **Copy log** (in the session, or on the home screen afterwards) puts a pasteable CSV on the clipboard: per-frame (4/s) grade (NO_BODY / NOT_PLANK / OK / PERFECT), the filtered plank signal (`plank_s`) and aura, the hip's distance from the green zone (`tgt_off`, 1 = the zone's edge), the numbers behind the grade (body angle, hip angle, elbow ratios; `lower` is A ankle / K knee / H hip only) and the key joints, plus start/stop/warning events. The camera screen shows a small `t=` clock that matches the log's `t_ms`, so a screen recording lines up with a pasted log. Paste it back to tune the plank detection thresholds (`PlankTolerances` in `core/PlankPose.kt`).
+
+## Releases
+
+Download the latest APK from the [Releases page](https://github.com/campey/coach-chicken/releases/latest) and open it on an Android phone (8.0+, 64-bit ARM). You will be asked to allow installing from your browser or file manager.
+
+To cut a release, push a version tag; GitHub Actions runs the tests, builds the APK and publishes the release:
+
+```
+git tag v0.3.1 && git push origin v0.3.1
+```
+
+By default the APK is signed with a debug key. For a stable key (so phones can update across releases), create one and add four repository secrets:
+
+```
+keytool -genkeypair -v -keystore release.jks -alias coachchicken -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 release.jks     # paste into the RELEASE_KEYSTORE_BASE64 secret
+```
+
+with `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD` as the other three. Keep `release.jks` somewhere safe and out of the repo: if it is lost, existing installs cannot be updated.
