@@ -147,7 +147,7 @@ private fun DayScreen(day: DayView, onClose: () -> Unit) {
             pager, Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = peek), pageSpacing = 12.dp,
             beyondViewportPageCount = 1,
         ) { page ->
-            Column(Modifier.verticalScroll(rememberScrollState())) { PlankCardView(day.cards[page]) }
+            FitHeight(Modifier.fillMaxSize()) { PlankCardView(day.cards[page]) }
         }
     }
 }

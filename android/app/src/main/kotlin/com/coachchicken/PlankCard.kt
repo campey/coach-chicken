@@ -3,7 +3,7 @@ package com.coachchicken
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +32,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -164,19 +167,11 @@ private fun ColumnScope.ReplayTiles(track: CardTrack, data: CardData, whenText: 
     val inPlank = pos >= 0 && pos <= stop + 1e-6
     val gs = if (inPlank) track.gradeScore[i] else 0.0
     val aura = if (inPlank) (track.aura[i] * ((gs - 0.4) / 0.5).coerceIn(0.0, 1.0)) else 0.0
-    // the form turns gently on its own; a finger can turn it further, and it eases back
-    var dragYaw by remember(track) { mutableFloatStateOf(0f) }
-    var dragPitch by remember(track) { mutableFloatStateOf(0f) }
-    var dragging by remember(track) { mutableStateOf(false) }
-    LaunchedEffect(track) {
-        while (true) withFrameNanos {
-            wallMs = it / 1_000_000
-            if (!dragging) { dragYaw *= 0.96f; dragPitch *= 0.96f }
-        }
-    }
+    // the form sways gently on its own (it can't be turned by touch)
+    LaunchedEffect(track) { while (true) withFrameNanos { wallMs = it / 1_000_000 } }
     val swayT = wallMs / 1000.0
-    val yaw = (0.32 * sin(swayT * 0.8)).toFloat() + dragYaw
-    val pitch = (0.1 * sin(swayT * 0.55 + 1.0)).toFloat() + dragPitch
+    val yaw = (0.32 * sin(swayT * 0.8)).toFloat()
+    val pitch = (0.1 * sin(swayT * 0.55 + 1.0)).toFloat()
     val scrub: (Double) -> Unit = { playing = false; pos = it }
 
     Tile {
@@ -206,12 +201,7 @@ private fun ColumnScope.ReplayTiles(track: CardTrack, data: CardData, whenText: 
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        FormCanvas(
-            track, pos, gs, aura, wallMs, yaw, pitch,
-            onDragStart = { dragging = true },
-            onDrag = { dx, dy -> dragYaw = (dragYaw + dx * 0.012f).coerceIn(-1.3f, 1.3f); dragPitch = (dragPitch + dy * 0.008f).coerceIn(-0.6f, 0.6f) },
-            onDragEnd = { dragging = false },
-        )
+        FormCanvas(track, pos, gs, aura, wallMs, yaw, pitch)
     }
     Tile {
         val shown = track.hip.getOrNull(i).takeIf { it != null && !it.isNaN() }
@@ -274,8 +264,25 @@ private fun Modifier.scrubbable(track: CardTrack, padLeftPx: Float, padRightPx: 
             val f = ((x - padLeftPx) / max(1f, size.width - padLeftPx - padRightPx)).coerceIn(0f, 1f)
             return track.startS + f * (track.endS - track.startS)
         }
-        detectDragGestures { change, _ -> change.consume(); onScrub(timeAt(change.position.x)) }
+        // horizontal drags only: a vertical swipe on a chart passes through to the card pager
+        detectHorizontalDragGestures { change, _ -> change.consume(); onScrub(timeAt(change.position.x)) }
     }
+
+/**
+ * Shows [content] at its natural size, or scaled down (from the top centre) when it would be taller than the space it is
+ * given, so the whole card, including its bottom border, is always visible.
+ */
+@Composable
+fun FitHeight(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Layout(content, modifier) { measurables, constraints ->
+        val child = measurables.first().measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+        val avail = constraints.maxHeight
+        val scale = if (avail != Constraints.Infinity && child.height > avail) avail.toFloat() / child.height else 1f
+        layout(child.width, if (avail != Constraints.Infinity) min(child.height, avail) else child.height) {
+            child.placeWithLayer(0, 0) { scaleX = scale; scaleY = scale; transformOrigin = TransformOrigin(0.5f, 0f) }
+        }
+    }
+}
 
 private fun frac(track: CardTrack, t: Double): Float =
     if (track.endS <= track.startS) 0f else ((t - track.startS) / (track.endS - track.startS)).coerceIn(0.0, 1.0).toFloat()
@@ -345,10 +352,7 @@ private fun DrawScope.label(tm: TextMeasurer, text: String, at: Offset, color: C
 }
 
 @Composable
-private fun FormCanvas(
-    track: CardTrack, pos: Double, gs: Double, aura: Double, wallMs: Long, yaw: Float, pitch: Float,
-    onDragStart: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit,
-) {
+private fun FormCanvas(track: CardTrack, pos: Double, gs: Double, aura: Double, wallMs: Long, yaw: Float, pitch: Float) {
     val rec = track.rec
     // frame the skeleton once, from where the body was during the plank
     val fit = remember(track) {
@@ -366,11 +370,7 @@ private fun FormCanvas(
         fun pct(v: List<Double>, f: Double): Double = v.sorted().let { if (it.isEmpty()) 0.0 else it[((it.size - 1) * f).toInt()] }
         doubleArrayOf(pct(xs, 0.02), pct(xs, 0.98), pct(ys, 0.02), pct(ys, 0.98))
     }
-    Canvas(
-        Modifier.fillMaxWidth().aspectRatio(2.4f).padding(top = 6.dp).pointerInput(track) {
-            detectDragGestures(onDragStart = { onDragStart() }, onDragEnd = onDragEnd, onDragCancel = onDragEnd) { change, amount -> change.consume(); onDrag(amount.x, amount.y) }
-        },
-    ) {
+    Canvas(Modifier.fillMaxWidth().aspectRatio(2.4f).padding(top = 6.dp)) {
         val w = size.width; val h = size.height
         val bw = max(0.05, fit[1] - fit[0]); val bh = max(0.05, fit[3] - fit[2])
         val s = min(w * 0.8 / bw, h * 0.6 / bh).toFloat()

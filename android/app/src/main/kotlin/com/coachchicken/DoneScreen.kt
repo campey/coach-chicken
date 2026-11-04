@@ -62,7 +62,7 @@ fun DoneScreen(card: CardData, onDone: () -> Unit) {
     val layer = rememberGraphicsLayer()
     val backdrop = MaterialTheme.colorScheme.surface
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
+        FitHeight(Modifier.weight(1f).fillMaxWidth()) {
             // the card is also recorded into a layer, so the share button can send exactly what is on screen as a picture
             Box(
                 Modifier.drawWithContent {
