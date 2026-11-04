@@ -13,6 +13,8 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.aspectRatio
@@ -129,9 +131,15 @@ class MainActivity : ComponentActivity() {
 internal fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: (() -> Unit)?, onDay: (CalendarDay) -> Unit) {
     val done = state.streak.doneToday
     val accent = if (done) StreakGold else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)
-    BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding()) {
+    Column(Modifier.fillMaxSize().systemBarsPadding()) {
+        // a title bar, which also brings the content down the screen
+        Text(
+            "Coach Chicken", Modifier.fillMaxWidth().padding(vertical = 18.dp),
+            style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Column(
-            Modifier.fillMaxWidth().heightIn(min = maxHeight).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 24.dp),
+            Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             // the streak: big and bright once today's plank is in, muted grey until then; the chicken stands beside it
