@@ -13,6 +13,10 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
@@ -130,13 +134,16 @@ private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: ((
             Modifier.fillMaxWidth().heightIn(min = maxHeight).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            // the streak: big and bright once today's plank is in, muted grey until then
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column {
+            // the streak: big and bright once today's plank is in, muted grey until then; the chicken stands beside it
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painterResource(R.drawable.ic_chicken), contentDescription = null,
+                    modifier = Modifier.fillMaxHeight().aspectRatio(56f / 110f), contentScale = ContentScale.Fit,
+                )
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(state.streak.days.toString(), fontSize = 88.sp, lineHeight = 92.sp, fontWeight = FontWeight.ExtraBold, color = accent)
                     Text("day streak!", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = accent)
                 }
-                StreakEgg(done, Modifier.size(width = 104.dp, height = 130.dp))
             }
             // the big call to action, or the affirmation once it's done
             Surface(
@@ -145,7 +152,7 @@ private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: ((
             ) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 30.dp, height = 58.dp))
+                        Text(if (done) "✅" else "⏱️", fontSize = 34.sp) // a check when it's done, a stopwatch when a plank is due
                         Text(
                             if (done) "Today's plank is done. Streak extended!" else "Do a plank today to extend your streak!",
                             style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
@@ -167,31 +174,6 @@ private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: ((
 }
 
 private val StreakGold = Color(0xFFFFB300)
-
-/** The streak's egg: gold with a shine once today's plank is done, a muted grey one until then. */
-@Composable
-private fun StreakEgg(done: Boolean, modifier: Modifier) {
-    val grey = MaterialTheme.colorScheme.onSurface
-    Canvas(modifier) {
-        val w = size.width; val h = size.height
-        val egg = Path().apply {
-            moveTo(w * 0.5f, h * 0.02f)
-            cubicTo(w * 0.12f, h * 0.02f, w * 0.0f, h * 0.55f, w * 0.0f, h * 0.68f)
-            cubicTo(w * 0.0f, h * 0.88f, w * 0.22f, h * 0.99f, w * 0.5f, h * 0.99f)
-            cubicTo(w * 0.78f, h * 0.99f, w * 1.0f, h * 0.88f, w * 1.0f, h * 0.68f)
-            cubicTo(w * 1.0f, h * 0.55f, w * 0.88f, h * 0.02f, w * 0.5f, h * 0.02f)
-            close()
-        }
-        if (done) {
-            drawPath(egg, Brush.verticalGradient(listOf(Color(0xFFFFE27A), Color(0xFFFFB300), Color(0xFFC9900C))))
-            drawPath(egg, Color(0xFF6B4300), style = Stroke(3.dp.toPx(), join = StrokeJoin.Round))
-            drawOval(Color.White.copy(alpha = 0.55f), Offset(w * 0.2f, h * 0.2f), Size(w * 0.16f, h * 0.24f))
-        } else {
-            drawPath(egg, grey.copy(alpha = 0.14f))
-            drawPath(egg, grey.copy(alpha = 0.22f), style = Stroke(3.dp.toPx(), join = StrokeJoin.Round))
-        }
-    }
-}
 
 /** The cards of one past day: swipe up and down between that day's planks. */
 @Composable
