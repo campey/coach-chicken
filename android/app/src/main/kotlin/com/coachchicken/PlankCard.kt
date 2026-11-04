@@ -85,8 +85,8 @@ private val CInk = Color(0xFF3B2A20)
 private val Violet = Color(0xFFA58CFF)
 private const val REPLAY_SPEED = 20.0
 /** The space left of the plot in both the timeline and the hip chart, so the two line up; the mascot lives in it. */
-private val Gutter = 56.dp
-private val MascotWidth = 48.dp
+private val Gutter = 72.dp
+private val MascotWidth = 64.dp
 private val ChartRight = 10.dp
 
 private fun fmt(sec: Double): String {
