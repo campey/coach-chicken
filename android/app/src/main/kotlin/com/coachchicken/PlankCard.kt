@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -132,7 +133,7 @@ private fun Header(completed: Boolean, whenText: String, durationS: Double) {
         }
         Surface(shape = CircleShape, color = CGold.copy(alpha = 0.25f)) {
             Text(
-                if (completed) "1m" else fmt(durationS),
+                fmt(durationS),
                 Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                 fontWeight = FontWeight.ExtraBold, color = CGold, textAlign = TextAlign.Center,
             )
@@ -163,8 +164,19 @@ private fun ColumnScope.ReplayTiles(track: CardTrack, data: CardData, whenText: 
     val inPlank = pos >= 0 && pos <= stop + 1e-6
     val gs = if (inPlank) track.gradeScore[i] else 0.0
     val aura = if (inPlank) (track.aura[i] * ((gs - 0.4) / 0.5).coerceIn(0.0, 1.0)) else 0.0
-    val sparkling = aura > 0.12
-    LaunchedEffect(sparkling) { while (sparkling) withFrameNanos { wallMs = it / 1_000_000 } }
+    // the form turns gently on its own; a finger can turn it further, and it eases back
+    var dragYaw by remember(track) { mutableFloatStateOf(0f) }
+    var dragPitch by remember(track) { mutableFloatStateOf(0f) }
+    var dragging by remember(track) { mutableStateOf(false) }
+    LaunchedEffect(track) {
+        while (true) withFrameNanos {
+            wallMs = it / 1_000_000
+            if (!dragging) { dragYaw *= 0.96f; dragPitch *= 0.96f }
+        }
+    }
+    val swayT = wallMs / 1000.0
+    val yaw = (0.32 * sin(swayT * 0.8)).toFloat() + dragYaw
+    val pitch = (0.1 * sin(swayT * 0.55 + 1.0)).toFloat() + dragPitch
     val scrub: (Double) -> Unit = { playing = false; pos = it }
 
     Tile {
@@ -194,7 +206,12 @@ private fun ColumnScope.ReplayTiles(track: CardTrack, data: CardData, whenText: 
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        FormCanvas(track, pos, gs, aura, wallMs)
+        FormCanvas(
+            track, pos, gs, aura, wallMs, yaw, pitch,
+            onDragStart = { dragging = true },
+            onDrag = { dx, dy -> dragYaw = (dragYaw + dx * 0.012f).coerceIn(-1.3f, 1.3f); dragPitch = (dragPitch + dy * 0.008f).coerceIn(-0.6f, 0.6f) },
+            onDragEnd = { dragging = false },
+        )
     }
     Tile {
         val shown = track.hip.getOrNull(i).takeIf { it != null && !it.isNaN() }
@@ -328,7 +345,10 @@ private fun DrawScope.label(tm: TextMeasurer, text: String, at: Offset, color: C
 }
 
 @Composable
-private fun FormCanvas(track: CardTrack, pos: Double, gs: Double, aura: Double, wallMs: Long) {
+private fun FormCanvas(
+    track: CardTrack, pos: Double, gs: Double, aura: Double, wallMs: Long, yaw: Float, pitch: Float,
+    onDragStart: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit,
+) {
     val rec = track.rec
     // frame the skeleton once, from where the body was during the plank
     val fit = remember(track) {
@@ -346,7 +366,11 @@ private fun FormCanvas(track: CardTrack, pos: Double, gs: Double, aura: Double, 
         fun pct(v: List<Double>, f: Double): Double = v.sorted().let { if (it.isEmpty()) 0.0 else it[((it.size - 1) * f).toInt()] }
         doubleArrayOf(pct(xs, 0.02), pct(xs, 0.98), pct(ys, 0.02), pct(ys, 0.98))
     }
-    Canvas(Modifier.fillMaxWidth().aspectRatio(2.4f).padding(top = 6.dp)) {
+    Canvas(
+        Modifier.fillMaxWidth().aspectRatio(2.4f).padding(top = 6.dp).pointerInput(track) {
+            detectDragGestures(onDragStart = { onDragStart() }, onDragEnd = onDragEnd, onDragCancel = onDragEnd) { change, amount -> change.consume(); onDrag(amount.x, amount.y) }
+        },
+    ) {
         val w = size.width; val h = size.height
         val bw = max(0.05, fit[1] - fit[0]); val bh = max(0.05, fit[3] - fit[2])
         val s = min(w * 0.8 / bw, h * 0.6 / bh).toFloat()
@@ -366,7 +390,7 @@ private fun FormCanvas(track: CardTrack, pos: Double, gs: Double, aura: Double, 
         val streak = if (inPlank) track.streak[i].toFloat() else 0f
         val grade = if (gs > 0.75) PlankGrade.PERFECT else if (gs > 0.3) PlankGrade.OK else PlankGrade.NOT_PLANK
         val pose = PoseUi(lms, rec.aspect, grade, 0f, aura = aura.toFloat(), streak = streak, judgedSide = rec.target?.side, target = rec.target)
-        drawPoseScene(pose, wallMs, baseColor = gradeColor(gs), heightPx = s) { x, y ->
+        drawPoseScene(pose, wallMs, baseColor = gradeColor(gs), heightPx = s, yaw = yaw, pitch = pitch) { x, y ->
             Offset(ox + (if (rec.mirror) 1 - x else x) * rec.aspect * s, oy + y * s)
         }
     }

@@ -323,7 +323,7 @@ private fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier) {
  * Shared by the live overlay and the summary card's replay. [baseColor] overrides the grade's colour (to blend them).
  */
 internal fun DrawScope.drawPoseScene(
-    pose: PoseUi, nowMs: Long, baseColor: Color? = null, heightPx: Float = size.height,
+    pose: PoseUi, nowMs: Long, baseColor: Color? = null, heightPx: Float = size.height, yaw: Float = 0f, pitch: Float = 0f,
     map: (Float, Float) -> Offset,
 ) {
         fun at(x: Float, y: Float) = map(x, y)
@@ -389,7 +389,7 @@ internal fun DrawScope.drawPoseScene(
         }
 
         val palette = BonePalette(ink = Ink, fill = base, shine = Color.White)
-        drawBoneSkeleton(lms, { at(it) }, pose.judgedSide, palette)
+        drawBoneSkeleton(lms, { at(it) }, pose.judgedSide, palette, yaw, pitch)
         if (pose.hipInZone == true) {
             val judgedHip = if (pose.judgedSide == 'L') 23 else 24
             if (visible(judgedHip)) drawCircle(Green, 9.dp.toPx(), at(lms[judgedHip]))
