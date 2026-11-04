@@ -9,6 +9,9 @@ import com.coachchicken.core.CalendarDay
 import com.coachchicken.core.Cue
 import com.coachchicken.core.Landmark
 import com.coachchicken.core.PlankGrade
+import com.coachchicken.core.PlankRecorder
+import com.coachchicken.core.PlankRecording
+import com.coachchicken.core.jointsOf
 import com.coachchicken.core.PlankTarget
 import com.coachchicken.core.PlankTimeline
 import com.coachchicken.core.PlankTracker
@@ -22,6 +25,7 @@ import com.coachchicken.core.headOutOfFrame
 import com.coachchicken.core.lockTarget
 import com.coachchicken.core.plankHip
 import com.coachchicken.core.plankMetrics
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +34,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -61,6 +66,12 @@ data class PoseUi(
     val headOutOfFrame: Boolean = false,
 )
 
+/** Everything one summary card needs: the logged session, and its replay if one was recorded. */
+data class CardData(val record: SessionRecord, val recording: PlankRecording?)
+
+/** The cards of one past day, opened from the calendar. */
+data class DayView(val date: LocalDate, val cards: List<CardData>)
+
 data class UiState(
     val phase: Phase = Phase.HOME,
     /** Plank time so far (while PLANKING) or the length of the plank just finished (DONE). */
@@ -70,11 +81,20 @@ data class UiState(
     val cameraOn: Boolean = false,
     val frontCamera: Boolean = true,
     val pose: PoseUi? = null,
+    /** The card of the plank just finished (shown on the DONE screen). */
+    val card: CardData? = null,
+    /** A past day opened from the calendar, or null. */
+    val day: DayView? = null,
 )
 
 class CoachViewModel(app: Application) : AndroidViewModel(app) {
     private val timeline = PlankTimeline()
     private val store = SessionStore(app)
+    private val plankStore = PlankStore(app)
+    private val recorder = PlankRecorder()
+    private var plankStartCameraMs = 0L
+    private var plankTarget: PlankTarget? = null
+    private var lastAspect = 1f
     private val sounds = SoundPlayer(app)
     private val tracker = PlankTracker()
     private val poseLog = PoseLog()
@@ -110,6 +130,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
         if (_state.value.phase != Phase.HOME) return
         tracker.reset()
         resetGoal()
+        recorder.clear()
         cameraStartedAt = SystemClock.elapsedRealtime()
         poseLog.clear("camera=${if (_state.value.frontCamera) "front" else "back"} on=$camera app=${BuildConfig.VERSION_NAME} (t_ms is the on-screen t= clock)")
         _state.update { it.copy(phase = Phase.READY, elapsedMs = 0, cameraOn = camera, pose = null) }
@@ -140,6 +161,8 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
         startedAt = Instant.now()
         startedRealtime = SystemClock.elapsedRealtime()
         poseLog.addEvent(cameraMs(), "PLANK_START")
+        plankStartCameraMs = cameraMs()
+        plankTarget = target
         targetFrozen = target != null // the green zone stops following you once the timer runs
         // Button start while the camera is on: let the tracker know, so getting up is still noticed.
         if (_state.value.cameraOn && !tracker.active) tracker.startedExternally()
@@ -180,6 +203,15 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
         val completed = timeline.isComplete(elapsed)
         store.append(SessionRecord("plank", startedAt, elapsed, completed))
         poseLog.addEvent(cameraMs(), "PLANK_END completed=$completed elapsedMs=$elapsed")
+        val record = SessionRecord("plank", startedAt, elapsed, completed)
+        val recording = if (_state.value.cameraOn && recorder.size > 0) {
+            PlankRecording(
+                startedAt = startedAt, aspect = lastAspect, mirror = _state.value.frontCamera, goalMs = timeline.durationMs,
+                durationMs = elapsed, completed = completed, frames = recorder.framesFor(plankStartCameraMs, cameraMs()),
+                target = plankTarget,
+            )
+        } else null
+        if (recording != null) runCatching { plankStore.save(recording) } // a failed save must not lose the session
         tracker.reset()
         resetGoal()
         _state.update {
@@ -189,13 +221,29 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
                 calendar = loadCalendar(),
                 cameraOn = it.cameraOn && !completed,
                 pose = null,
+                card = if (completed) CardData(record, recording) else null,
             )
         }
     }
 
     fun dismissDone() {
-        if (_state.value.phase == Phase.DONE) _state.update { it.copy(phase = Phase.HOME, elapsedMs = 0) }
+        if (_state.value.phase == Phase.DONE) _state.update { it.copy(phase = Phase.HOME, elapsedMs = 0, card = null) }
     }
+
+    /** Open the cards of a past day (its completed planks, oldest first). Planks from before replays were saved have none. */
+    fun openDay(date: LocalDate) {
+        viewModelScope.launch {
+            val zone = ZoneId.systemDefault()
+            val cards = withContext(Dispatchers.IO) {
+                store.readAll().filter { it.completed && it.startedAt.atZone(zone).toLocalDate() == date }
+                    .sortedBy { it.startedAt }
+                    .map { CardData(it, runCatching { plankStore.load(it.startedAt) }.getOrNull()) }
+            }
+            if (cards.isNotEmpty()) _state.update { it.copy(day = DayView(date, cards)) }
+        }
+    }
+
+    fun closeDay() = _state.update { it.copy(day = null) }
 
     /** The app left the foreground: there is no foreground service yet, so wind the session up. */
     fun onAppStopped() {
@@ -227,6 +275,9 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
             val offset = if (target != null && hip != null) target!!.offset(hip, aspect) else null
 
             poseLog.addFrame(cameraMs(), before.phase.name, landmarks, aspect, grade, tracker.smoothed, auraNow, offset)
+            lastAspect = aspect
+            val hipDeg = landmarks?.let { plankMetrics(it, aspect) }?.takeIf { it.lower != 'H' }?.hipAngleDeg?.toFloat()
+            recorder.add(cameraMs(), grade.ordinal, auraNow, hipDeg, landmarks?.let { jointsOf(it) })
             when (event) {
                 PlankTracker.Event.STARTED -> {
                     poseLog.addEvent(cameraMs(), "TRACKER_STARTED")

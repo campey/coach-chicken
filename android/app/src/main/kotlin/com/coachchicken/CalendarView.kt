@@ -1,6 +1,7 @@
 package com.coachchicken
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +34,7 @@ private val GoldDark = Color(0xFFC9900C)
 private val dayHeaders = listOf("S", "M", "T", "W", "T", "F", "S")
 
 @Composable
-fun CalendarView(weeks: List<List<CalendarDay>>, modifier: Modifier = Modifier) {
+fun CalendarView(weeks: List<List<CalendarDay>>, modifier: Modifier = Modifier, onDayClick: ((CalendarDay) -> Unit)? = null) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth()) {
             dayHeaders.forEach {
@@ -48,16 +49,17 @@ fun CalendarView(weeks: List<List<CalendarDay>>, modifier: Modifier = Modifier) 
         }
         weeks.forEach { week ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                week.forEach { day -> DayCell(day, Modifier.weight(1f)) }
+                week.forEach { day -> DayCell(day, Modifier.weight(1f), onDayClick) }
             }
         }
     }
 }
 
 @Composable
-private fun DayCell(day: CalendarDay, modifier: Modifier) {
+private fun DayCell(day: CalendarDay, modifier: Modifier, onClick: ((CalendarDay) -> Unit)?) {
     // Cells are taller than wide so the golden ring reads as an egg.
-    Box(modifier.aspectRatio(0.8f).padding(2.dp), contentAlignment = Alignment.Center) {
+    val tap = if (day.trained && onClick != null) Modifier.clickable { onClick(day) } else Modifier
+    Box(modifier.aspectRatio(0.8f).then(tap).padding(2.dp), contentAlignment = Alignment.Center) {
         if (day.trained) {
             Canvas(Modifier.matchParentSize()) {
                 val stroke = 3.dp.toPx()

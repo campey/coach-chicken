@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -12,6 +13,13 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.TextButton
+import com.coachchicken.core.CalendarDay
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -66,7 +74,10 @@ class MainActivity : ComponentActivity() {
                     val copyLog: (() -> Unit)? =
                         if (vm.hasPoseLog()) ({ clipboard.setText(AnnotatedString(vm.poseLogText())) }) else null
 
-                    when (state.phase) {
+                    val day = state.day
+                    if (day != null) {
+                        DayScreen(day, vm::closeDay)
+                    } else when (state.phase) {
                         Phase.READY, Phase.PLANKING -> SessionScreen(
                             state = state,
                             onPose = vm::onPose,
@@ -76,7 +87,7 @@ class MainActivity : ComponentActivity() {
                             onFlip = vm::flipCamera,
                             onCopyLog = copyLog,
                         )
-                        Phase.HOME, Phase.DONE -> HomeScreen(state, onStartSession, vm::dismissDone, copyLog)
+                        Phase.HOME, Phase.DONE -> HomeScreen(state, onStartSession, vm::dismissDone, copyLog) { vm.openDay(it.date) }
                     }
                 }
             }
@@ -91,7 +102,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onDone: () -> Unit, onCopyLog: (() -> Unit)?) {
+private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onDone: () -> Unit, onCopyLog: (() -> Unit)?, onDay: (CalendarDay) -> Unit) {
     // Scrolls when it doesn't fit (landscape), and is centred when it does.
     BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding()) {
         Column(
@@ -101,18 +112,38 @@ private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onDone: () ->
         ) {
             Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 56.dp, height = 110.dp))
             Text("Coach Chicken", style = MaterialTheme.typography.headlineMedium)
+            val card = state.card
             if (state.phase == Phase.DONE) {
-                Text("Plank done! 🥚 ${formatElapsed(state.elapsedMs)}", style = MaterialTheme.typography.titleLarge)
+                if (card != null) PlankCardView(card)
+                else Text("Plank done! 🥚 ${formatElapsed(state.elapsedMs)}", style = MaterialTheme.typography.titleLarge)
             }
-            CalendarView(state.calendar, Modifier.fillMaxWidth())
-            if (state.phase == Phase.DONE) {
-                Button(onDone, Modifier.fillMaxWidth()) { Text("OK") }
-            } else {
+            if (state.phase == Phase.DONE) Button(onDone, Modifier.fillMaxWidth()) { Text("OK") }
+            CalendarView(state.calendar, Modifier.fillMaxWidth(), onDayClick = onDay)
+            if (state.phase != Phase.DONE) {
                 Button(onStartSession, Modifier.fillMaxWidth()) { Text("Start session") }
             }
             if (onCopyLog != null) {
                 OutlinedButton(onCopyLog, Modifier.fillMaxWidth()) { Text("Copy pose log") }
             }
+        }
+    }
+}
+
+/** The cards of one past day: swipe between that day's planks. */
+@Composable
+private fun DayScreen(day: DayView, onClose: () -> Unit) {
+    BackHandler(onBack = onClose)
+    val pager = rememberPagerState { day.cards.size }
+    Column(Modifier.fillMaxSize().systemBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                Text(day.date.format(DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.getDefault())), style = MaterialTheme.typography.titleLarge)
+                if (day.cards.size > 1) Text("${pager.currentPage + 1} of ${day.cards.size} · swipe for the others", style = MaterialTheme.typography.bodySmall)
+            }
+            TextButton(onClose) { Text("Close") }
+        }
+        HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth(), pageSpacing = 12.dp, verticalAlignment = Alignment.Top) { page ->
+            Column(Modifier.verticalScroll(rememberScrollState())) { PlankCardView(day.cards[page]) }
         }
     }
 }
