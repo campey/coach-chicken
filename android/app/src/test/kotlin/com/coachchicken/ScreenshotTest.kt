@@ -43,3 +43,18 @@ class ScreenshotTest {
         paparazzi.snapshot { MaterialTheme(colorScheme = darkColorScheme()) { Surface(Modifier.fillMaxSize()) { DoneScreen(card()) {} } } }
     }
 }
+
+/** A short phone: the calendar drops to fewer weeks instead of scrolling. */
+class ShortScreenshotTest {
+    @get:Rule val paparazzi = Paparazzi(deviceConfig = DeviceConfig.NEXUS_5, theme = "android:Theme.Material.NoActionBar")
+
+    @Test fun homeOnAShortPhone() {
+        val today = LocalDate.of(2026, 11, 4)
+        val cal = buildCalendar(today, mapOf(today.minusDays(1) to listOf(LocalTime.of(9, 5))))
+        paparazzi.snapshot {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                Surface(Modifier.fillMaxSize()) { HomeScreen(UiState(calendar = cal, streak = Streak(1, true)), {}, null) {} }
+            }
+        }
+    }
+}

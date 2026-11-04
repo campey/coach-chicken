@@ -138,9 +138,9 @@ internal fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: (
             style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        // no scrolling: the calendar shows as many weeks as fit under the streak and the call to action (2 to 4)
+        // no scrolling: the calendar shows as many weeks as fit under the streak and the call to action (1 to 5)
         BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-        val weeks = ((maxHeight - 476.dp) / 62.dp).toInt().coerceIn(2, 4)
+        val weeks = ((maxHeight - 476.dp) / 62.dp).toInt().coerceIn(1, 5)
         Column(
             Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
