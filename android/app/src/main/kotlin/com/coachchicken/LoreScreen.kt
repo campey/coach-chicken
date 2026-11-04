@@ -58,7 +58,7 @@ fun LoreScreen(onClose: () -> Unit) {
                     withLink(LinkAnnotation.Url(MONKEY_ISLAND_URL, TextLinkStyles(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)))) {
                         append("rubber chicken with a pulley in the middle")
                     }
-                    append(", from Monkey Island.")
+                    append(", first seen in The Secret of Monkey Island. Guybrush Threepwood was sure it would be completely useless, until it turned out to have several uses.")
                 },
                 style = MaterialTheme.typography.bodyLarge, lineHeight = 24.sp, textAlign = TextAlign.Center,
             )
@@ -68,7 +68,7 @@ fun LoreScreen(onClose: () -> Unit) {
             )
             LoreText(
                 "So that is the job. A quiet cluck while you hold the plank, a louder one every ten seconds, a squawk when you reach " +
-                    "the minute, and a long, building bwaaak if your form slips. The chicken is not useless. It is helping you train!",
+                    "the minute, and a long, building bwaaak if your form slips. This chicken is not useless either. It is helping you train!",
             )
         }
     }
