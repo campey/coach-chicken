@@ -361,7 +361,10 @@ internal fun DrawScope.drawBoneSkeleton(
             // measured: the ear-to-nose line is the head axis; in the skull model the ear hole and nose tip are about 11 degrees apart
             val v = (nose - ear) / (nose - ear).getDistance()
             var pv = Offset(-v.y, v.x)
-            if (pv.x * side.x + pv.y * side.y < 0f) pv = -pv
+            // the chin points down when looking ahead and back towards the body when looking down; judging it against
+            // 'down' alone flips when the head hangs straight down, which turned the skull upside down
+            val ref = side + u
+            if (pv.x * ref.x + pv.y * ref.y < 0f) pv = -pv
             val dl = 0.19f
             face = v * cos(dl) + pv * sin(dl)
             chin = pv * cos(dl) - v * sin(dl)
