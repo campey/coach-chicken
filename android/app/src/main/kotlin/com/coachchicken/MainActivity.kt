@@ -13,6 +13,19 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.layout.PaddingValues
@@ -110,20 +123,72 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: (() -> Unit)?, onDay: (CalendarDay) -> Unit) {
-    // Scrolls when it doesn't fit (landscape), and is centred when it does.
+    val done = state.streak.doneToday
+    val accent = if (done) StreakGold else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)
     BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding()) {
         Column(
-            Modifier.fillMaxWidth().heightIn(min = maxHeight).verticalScroll(rememberScrollState()).padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            Modifier.fillMaxWidth().heightIn(min = maxHeight).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 56.dp, height = 110.dp))
-            Text("Coach Chicken", style = MaterialTheme.typography.headlineMedium)
-            CalendarView(state.calendar, Modifier.fillMaxWidth(), onDayClick = onDay)
-            Button(onStartSession, Modifier.fillMaxWidth()) { Text("Start session") }
+            // the streak: big and bright once today's plank is in, muted grey until then
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text(state.streak.days.toString(), fontSize = 88.sp, lineHeight = 92.sp, fontWeight = FontWeight.ExtraBold, color = accent)
+                    Text("day streak!", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = accent)
+                }
+                StreakEgg(done, Modifier.size(width = 104.dp, height = 130.dp))
+            }
+            // the big call to action, or the affirmation once it's done
+            Surface(
+                shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = BorderStroke(2.dp, if (done) StreakGold.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 30.dp, height = 58.dp))
+                        Text(
+                            if (done) "Today's plank is done. Streak extended!" else "Do a plank today to extend your streak!",
+                            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    if (done) OutlinedButton(onStartSession, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)) { Text("ANOTHER SESSION", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp) }
+                    else Button(onStartSession, Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp)) { Text("START SESSION", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp) }
+                }
+            }
+            Text("Calendar", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+            Surface(shape = RoundedCornerShape(24.dp), color = Color.Transparent, border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                CalendarView(state.calendar, Modifier.fillMaxWidth().padding(16.dp), onDayClick = onDay)
+            }
             if (onCopyLog != null) {
                 OutlinedButton(onCopyLog, Modifier.fillMaxWidth()) { Text("Copy pose log") }
             }
+        }
+    }
+}
+
+private val StreakGold = Color(0xFFFFB300)
+
+/** The streak's egg: gold with a shine once today's plank is done, a muted grey one until then. */
+@Composable
+private fun StreakEgg(done: Boolean, modifier: Modifier) {
+    val grey = MaterialTheme.colorScheme.onSurface
+    Canvas(modifier) {
+        val w = size.width; val h = size.height
+        val egg = Path().apply {
+            moveTo(w * 0.5f, h * 0.02f)
+            cubicTo(w * 0.12f, h * 0.02f, w * 0.0f, h * 0.55f, w * 0.0f, h * 0.68f)
+            cubicTo(w * 0.0f, h * 0.88f, w * 0.22f, h * 0.99f, w * 0.5f, h * 0.99f)
+            cubicTo(w * 0.78f, h * 0.99f, w * 1.0f, h * 0.88f, w * 1.0f, h * 0.68f)
+            cubicTo(w * 1.0f, h * 0.55f, w * 0.88f, h * 0.02f, w * 0.5f, h * 0.02f)
+            close()
+        }
+        if (done) {
+            drawPath(egg, Brush.verticalGradient(listOf(Color(0xFFFFE27A), Color(0xFFFFB300), Color(0xFFC9900C))))
+            drawPath(egg, Color(0xFF6B4300), style = Stroke(3.dp.toPx(), join = StrokeJoin.Round))
+            drawOval(Color.White.copy(alpha = 0.55f), Offset(w * 0.2f, h * 0.2f), Size(w * 0.16f, h * 0.24f))
+        } else {
+            drawPath(egg, grey.copy(alpha = 0.14f))
+            drawPath(egg, grey.copy(alpha = 0.22f), style = Stroke(3.dp.toPx(), join = StrokeJoin.Round))
         }
     }
 }

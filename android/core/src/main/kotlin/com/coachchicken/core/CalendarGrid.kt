@@ -47,3 +47,18 @@ fun buildCalendar(
         }
     }
 }
+
+/** The run of consecutive trained days. [doneToday] is false until today has a completed plank. */
+data class Streak(val days: Int, val doneToday: Boolean)
+
+/**
+ * The current streak: consecutive trained days ending today, or ending yesterday while today is still to do
+ * (so the number stays put, but [Streak.doneToday] is false until today's plank is in).
+ */
+fun currentStreak(trainedDays: Set<LocalDate>, today: LocalDate): Streak {
+    val doneToday = today in trainedDays
+    var day = if (doneToday) today else today.minusDays(1)
+    var n = 0
+    while (day in trainedDays) { n++; day = day.minusDays(1) }
+    return Streak(n, doneToday)
+}

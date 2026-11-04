@@ -6,6 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.coachchicken.core.AuraMeter
 import com.coachchicken.core.CalendarDay
+import com.coachchicken.core.Streak
+import com.coachchicken.core.currentStreak
 import com.coachchicken.core.Cue
 import com.coachchicken.core.Landmark
 import com.coachchicken.core.PlankGrade
@@ -78,6 +80,7 @@ data class UiState(
     val elapsedMs: Long = 0,
     val goalMs: Long = PlankTimeline.DEFAULT_DURATION_MS,
     val calendar: List<List<CalendarDay>> = emptyList(),
+    val streak: Streak = Streak(0, false),
     val cameraOn: Boolean = false,
     val frontCamera: Boolean = true,
     val pose: PoseUi? = null,
@@ -103,12 +106,17 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
     private var targetFrozen = false
     private var cameraStartedAt = 0L
 
-    private val _state = MutableStateFlow(UiState(goalMs = timeline.durationMs, calendar = loadCalendar()))
+    private val _state = MutableStateFlow(UiState(goalMs = timeline.durationMs, calendar = loadCalendar(), streak = loadStreak()))
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private var ticker: Job? = null
     private var startedAt: Instant = Instant.now()
     private var startedRealtime = 0L
+
+    private fun loadStreak(): Streak {
+        val zone = ZoneId.systemDefault()
+        return currentStreak(completedSessionTimes(store.readAll(), zone).keys, LocalDate.now(zone))
+    }
 
     private fun loadCalendar(): List<List<CalendarDay>> {
         val zone = ZoneId.systemDefault()
@@ -219,6 +227,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
                 phase = if (completed) Phase.DONE else Phase.READY,
                 elapsedMs = elapsed,
                 calendar = loadCalendar(),
+                streak = loadStreak(),
                 cameraOn = it.cameraOn && !completed,
                 pose = null,
                 card = if (completed) CardData(record, recording) else null,
