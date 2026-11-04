@@ -138,8 +138,11 @@ internal fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: (
             style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        // no scrolling: the calendar shows as many weeks as fit under the streak and the call to action (2 to 4)
+        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+        val weeks = ((maxHeight - 476.dp) / 62.dp).toInt().coerceIn(2, 4)
         Column(
-            Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 24.dp),
+            Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             // the streak: big and bright once today's plank is in, muted grey until then; the chicken stands beside it
@@ -170,13 +173,14 @@ internal fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: (
                     else Button(onStartSession, Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp)) { Text("START SESSION", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp) }
                 }
             }
-            Text("Calendar", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Streak Calendar", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
             Surface(shape = RoundedCornerShape(24.dp), color = Color.Transparent, border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                CalendarView(state.calendar, Modifier.fillMaxWidth().padding(16.dp), onDayClick = onDay)
+                CalendarView(state.calendar.takeLast(weeks), Modifier.fillMaxWidth().padding(16.dp), onDayClick = onDay)
             }
             if (onCopyLog != null) {
                 OutlinedButton(onCopyLog, Modifier.fillMaxWidth()) { Text("Copy pose log") }
             }
+        }
         }
     }
 }
