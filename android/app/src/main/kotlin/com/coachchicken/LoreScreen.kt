@@ -54,11 +54,11 @@ fun LoreScreen(onClose: () -> Unit) {
             Text("Yes. A rubber one.", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
             Text(
                 buildAnnotatedString {
-                    append("Coach Chicken is inspired by the ")
+                    append("Coach Chicken is inspired by the rubber chicken with a pulley in the middle, first seen in ")
                     withLink(LinkAnnotation.Url(MONKEY_ISLAND_URL, TextLinkStyles(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)))) {
-                        append("rubber chicken with a pulley in the middle")
+                        append("The Secret of Monkey Island")
                     }
-                    append(", first seen in The Secret of Monkey Island. Guybrush Threepwood was sure it would be completely useless, until it turned out to have several uses.")
+                    append(". Guybrush Threepwood was sure it would be completely useless, until it turned out to have several uses.")
                 },
                 style = MaterialTheme.typography.bodyLarge, lineHeight = 24.sp, textAlign = TextAlign.Center,
             )
