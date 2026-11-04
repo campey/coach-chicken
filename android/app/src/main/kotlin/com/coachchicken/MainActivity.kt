@@ -140,7 +140,7 @@ private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: ((
                     painterResource(R.drawable.ic_chicken), contentDescription = null,
                     modifier = Modifier.fillMaxHeight().aspectRatio(56f / 110f), contentScale = ContentScale.Fit,
                 )
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                     Text(state.streak.days.toString(), fontSize = 88.sp, lineHeight = 92.sp, fontWeight = FontWeight.ExtraBold, color = accent)
                     Text("day streak!", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = accent)
                 }
