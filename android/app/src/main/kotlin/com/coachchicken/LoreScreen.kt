@@ -21,9 +21,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+private const val MONKEY_ISLAND_URL = "https://monkeyisland.fandom.com/wiki/Rubber_Chicken_With_A_Pulley_In_The_Middle"
 
 /** Why a chicken: the lore. */
 @Composable
@@ -44,14 +52,23 @@ fun LoreScreen(onClose: () -> Unit) {
         ) {
             Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.height(150.dp))
             Text("Yes. A rubber one.", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
-            LoreText("Coach Chicken is inspired by the rubber chicken with a pulley in the middle.")
+            Text(
+                buildAnnotatedString {
+                    append("Coach Chicken is inspired by the ")
+                    withLink(LinkAnnotation.Url(MONKEY_ISLAND_URL, TextLinkStyles(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)))) {
+                        append("rubber chicken with a pulley in the middle")
+                    }
+                    append(", from Monkey Island.")
+                },
+                style = MaterialTheme.typography.bodyLarge, lineHeight = 24.sp, textAlign = TextAlign.Center,
+            )
             LoreText(
                 "The real one came from Malaysia. I found a squeaky rubber chicken with a pivoting neck, bought it, and through covid " +
                     "it was our exercise squeaker.",
             )
             LoreText(
                 "So that is the job. A quiet cluck while you hold the plank, a louder one every ten seconds, a squawk when you reach " +
-                    "the minute, and a long, building bwaaak if your form slips. The chicken is not angry. The chicken is coaching.",
+                    "the minute, and a long, building bwaaak if your form slips. The chicken is not useless. It is helping you train!",
             )
         }
     }
