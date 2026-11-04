@@ -29,6 +29,10 @@ class ScreenshotTest {
         }
     }
 
+    @Test fun lore() {
+        paparazzi.snapshot { MaterialTheme(colorScheme = darkColorScheme()) { Surface(Modifier.fillMaxSize()) { LoreScreen {} } } }
+    }
+
     private fun card(): CardData {
         val text = javaClass.classLoader!!.getResource("run.txt")!!.readText()
         val rec = com.coachchicken.core.PlankRecordingCodec.decode(text)!!

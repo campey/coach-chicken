@@ -13,6 +13,8 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.setValue
@@ -104,8 +106,12 @@ class MainActivity : ComponentActivity() {
                     val copyLog: (() -> Unit)? =
                         if (vm.hasPoseLog()) ({ clipboard.setText(AnnotatedString(vm.poseLogText())) }) else null
 
+                    var lore by rememberSaveable { mutableStateOf(false) }
+                    val uriHandler = LocalUriHandler.current
                     val day = state.day
-                    if (day != null) {
+                    if (lore) {
+                        LoreScreen { lore = false }
+                    } else if (day != null) {
                         DayScreen(day, vm::closeDay)
                     } else when (state.phase) {
                         Phase.READY, Phase.PLANKING -> SessionScreen(
@@ -117,7 +123,11 @@ class MainActivity : ComponentActivity() {
                             onFlip = vm::flipCamera,
                             onCopyLog = copyLog,
                         )
-                        Phase.HOME -> HomeScreen(state, onStartSession, copyLog) { vm.openDay(it.date) }
+                        Phase.HOME -> HomeScreen(
+                            state, onStartSession, copyLog,
+                            onLore = { lore = true },
+                            onIssues = { uriHandler.openUri(ISSUES_URL) },
+                        ) { vm.openDay(it.date) }
                         Phase.DONE -> {
                             val card = state.card ?: CardData(SessionRecord("plank", Instant.now(), state.elapsedMs, true), null)
                             DoneScreen(card, vm::dismissDone)
@@ -136,7 +146,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-internal fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: (() -> Unit)?, onDay: (CalendarDay) -> Unit) {
+internal fun HomeScreen(
+    state: UiState, onStartSession: () -> Unit, onCopyLog: (() -> Unit)?, onLore: () -> Unit = {}, onIssues: () -> Unit = {},
+    onDay: (CalendarDay) -> Unit,
+) {
     val done = state.streak.doneToday
     val accent = if (done) StreakGold else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
@@ -160,6 +173,8 @@ internal fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: (
                         enabled = onCopyLog != null,
                         onClick = { menuOpen = false; onCopyLog?.invoke() },
                     )
+                    DropdownMenuItem(text = { Text("A chicken?") }, onClick = { menuOpen = false; onLore() })
+                    DropdownMenuItem(text = { Text("Log an issue") }, onClick = { menuOpen = false; onIssues() })
                 }
             }
         }
@@ -209,6 +224,7 @@ internal fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: (
 }
 
 private val StreakGold = Color(0xFFFFB300)
+private const val ISSUES_URL = "https://github.com/campey/coach-chicken/issues"
 
 /** The cards of one past day: swipe up and down between that day's planks. */
 @Composable
