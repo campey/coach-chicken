@@ -44,7 +44,7 @@ fun LoreScreen(onClose: () -> Unit) {
         ) {
             Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.height(150.dp))
             Text("Yes. A rubber one.", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
-            LoreText("Coach Chicken is inspired by the classic rubber chicken with a pulley in the middle: pull the string, get the squawk.")
+            LoreText("Coach Chicken is inspired by the rubber chicken with a pulley in the middle.")
             LoreText(
                 "The real one came from Malaysia. I found a squeaky rubber chicken with a pivoting neck, bought it, and through covid " +
                     "it was our exercise squeaker.",
