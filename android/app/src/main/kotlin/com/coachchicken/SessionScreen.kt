@@ -259,7 +259,7 @@ private val Ink = Color(0xFF3B2A20)         // the hand-drawn outline
 private val GoldGlow = Color(0xFFFFB300)
 private val SparkleGold = Color(0xFFFFE082)
 
-private fun DrawScope.drawStar(c: Offset, r: Float, color: Color) {
+internal fun DrawScope.drawStar(c: Offset, r: Float, color: Color) {
     val k = 0.22f // how fat the four points are
     val path = Path().apply {
         moveTo(c.x, c.y - r); lineTo(c.x + r * k, c.y - r * k); lineTo(c.x + r, c.y); lineTo(c.x + r * k, c.y + r * k)
@@ -308,14 +308,27 @@ private fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier) {
     }
     Canvas(modifier) {
         if (pose == null) return@Canvas
-        val nowMs = clockMs
         val viewAspect = size.width / size.height
         val (w, h) = if (viewAspect > pose.aspect) (size.height * pose.aspect) to size.height
         else size.width to (size.width / pose.aspect)
         val ox = (size.width - w) / 2
         val oy = (size.height - h) / 2
-        fun at(x: Float, y: Float) = Offset(ox + (if (mirror) 1 - x else x) * w, oy + y * h)
+        drawPoseScene(pose, clockMs, heightPx = h) { x, y -> Offset(ox + (if (mirror) 1 - x else x) * w, oy + y * h) }
+    }
+}
+
+/**
+ * The goal zone, aura glow, sparkles and skeleton for one pose. [map] takes normalised image coordinates to canvas
+ * pixels and must scale y by the image height in pixels, which is [heightPx] (the zone's width is in that unit).
+ * Shared by the live overlay and the summary card's replay. [baseColor] overrides the grade's colour (to blend them).
+ */
+internal fun DrawScope.drawPoseScene(
+    pose: PoseUi, nowMs: Long, baseColor: Color? = null, heightPx: Float = size.height, yaw: Float = 0f, pitch: Float = 0f,
+    map: (Float, Float) -> Offset,
+) {
+        fun at(x: Float, y: Float) = map(x, y)
         fun at(l: Landmark) = at(l.x, l.y)
+        val h = heightPx
 
         pose.target?.let { t ->
             val a = at(t.ax, t.ay)
@@ -339,10 +352,10 @@ private fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier) {
             }
         }
 
-        if (pose.landmarks.size < 29) return@Canvas
+        if (pose.landmarks.size < 29) return
         val lms = pose.landmarks
         fun visible(i: Int) = lms[i].visibility >= 0.3f
-        val base = when (pose.grade) {
+        val base = baseColor ?: when (pose.grade) {
             PlankGrade.PERFECT -> Gold
             PlankGrade.OK -> Yellow
             else -> Grey
@@ -376,10 +389,9 @@ private fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier) {
         }
 
         val palette = BonePalette(ink = Ink, fill = base, shine = Color.White)
-        drawBoneSkeleton(lms, { at(it) }, pose.judgedSide, palette)
+        drawBoneSkeleton(lms, { at(it) }, pose.judgedSide, palette, yaw, pitch)
         if (pose.hipInZone == true) {
             val judgedHip = if (pose.judgedSide == 'L') 23 else 24
             if (visible(judgedHip)) drawCircle(Green, 9.dp.toPx(), at(lms[judgedHip]))
         }
-    }
 }

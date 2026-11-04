@@ -116,7 +116,7 @@ private fun DrawScope.thinBone(a: Offset, b: Offset, width: Float, pal: BonePale
  * and ulna, and for each leg a femur with a tibia and fibula. The far side of the body is dimmer and thinner.
  * [at] maps a landmark to a screen position; joints below 0.3 visibility are left out.
  */
-internal fun DrawScope.drawBoneSkeleton(lms: List<Landmark>, at: (Landmark) -> Offset, judgedSide: Char?, pal: BonePalette) {
+internal fun DrawScope.drawBoneSkeleton2D(lms: List<Landmark>, at: (Landmark) -> Offset, judgedSide: Char?, pal: BonePalette) {
     fun vis(i: Int) = lms[i].visibility >= 0.3f
     fun pos(i: Int) = at(lms[i])
     val inkW = 2.2.dp.toPx()
@@ -202,3 +202,210 @@ internal fun DrawScope.drawBoneSkeleton(lms: List<Landmark>, at: (Landmark) -> O
 }
 
 private fun atan2f(y: Float, x: Float) = kotlin.math.atan2(y, x)
+
+
+// ---- the 3D skeleton ------------------------------------------------------------------------------------------------
+// A procedural model posed from the 2D joints: the left and right limbs sit at fixed depths either side of the body, so
+// the whole thing can be turned (yaw about the vertical, pitch about the horizontal) and still look like a solid skeleton.
+
+private class V3(val x: Float, val y: Float, val z: Float)
+private class Prim(val z: Float, val draw: () -> Unit)
+
+/** The skull in profile, as (forward, down) in skull units: back of the head round the crown, brow, nose, teeth, chin, jaw. */
+private val SKULL = listOf(
+    -1.15f to 0.10f, -1.0f to -0.65f, -0.45f to -1.05f, 0.25f to -1.10f, 0.85f to -0.80f, 1.08f to -0.45f, 1.0f to -0.10f,
+    1.38f to 0.28f, 1.15f to 0.50f, 1.10f to 0.78f, 1.12f to 0.98f, 1.0f to 1.20f, 0.40f to 1.25f, 0.0f to 1.0f,
+    -0.15f to 0.55f, -0.60f to 0.50f, -1.10f to 0.45f,
+)
+
+/**
+ * The whole skeleton, hand-drawn, in 3D: spine, ribs, sternum, collar bones, shoulder blades, pelvis, skull, and arm and
+ * leg bones. [yaw] and [pitch] (radians) turn the view; 0, 0 is the plain side view. The head is placed from the ear and
+ * nose (measured) when the near ear is visible, otherwise estimated from the nose alone. Parts further from the camera
+ * are dimmer and drawn first. Falls back to the flat drawing when the shoulders or hips are missing.
+ */
+internal fun DrawScope.drawBoneSkeleton(
+    lms: List<Landmark>, at: (Landmark) -> Offset, judgedSide: Char?, pal: BonePalette, yaw: Float = 0f, pitch: Float = 0f,
+) {
+    fun vis(i: Int) = (lms.getOrNull(i)?.visibility ?: 0f) >= 0.3f
+    fun pos(i: Int) = at(lms[i])
+    val inkW = 2.2.dp.toPx()
+    val shoulders = listOf(11, 12).filter(::vis)
+    val hips = listOf(23, 24).filter(::vis)
+    if (shoulders.isEmpty() || hips.isEmpty()) return drawBoneSkeleton2D(lms, at, judgedSide, pal)
+    val neck = shoulders.map(::pos).reduce { a, b -> mid(a, b) }
+    val pelvis = hips.map(::pos).reduce { a, b -> mid(a, b) }
+    val torso = (pelvis - neck).getDistance().coerceAtLeast(60.dp.toPx())
+
+    val near = judgedSide ?: 'R'
+    fun zSign(idx: Int): Float = if ((idx % 2 == 1) == (near == 'L')) 1f else -1f // odd MediaPipe indices are the left side
+    val hwS = torso * 0.17f
+    val hwH = torso * 0.11f
+    fun depthOf(idx: Int): Float = when (idx) {
+        in 23..28 -> zSign(idx) * hwH * (if (idx >= 27) 0.85f else 1f)
+        in 11..16 -> zSign(idx) * hwS
+        else -> 0f
+    }
+    val c = mid(neck, pelvis)
+    val cy = cos(yaw); val sy = sin(yaw); val cp = cos(pitch); val sp = sin(pitch)
+    fun rot(x: Float, y: Float, z: Float): V3 {
+        val dx = x - c.x; val dy = y - c.y
+        val x1 = dx * cy + z * sy; val z1 = -dx * sy + z * cy
+        return V3(c.x + x1, c.y + dy * cp - z1 * sp, dy * sp + z1 * cp)
+    }
+    fun rot(o: Offset, z: Float) = rot(o.x, o.y, z)
+    fun xy(v: V3) = Offset(v.x, v.y)
+    fun joint(idx: Int): V3? = if (vis(idx)) rot(pos(idx), depthOf(idx)) else null
+    fun fade(z: Float) = 0.6f + 0.4f * (0.5f + z / (torso * 0.45f)).coerceIn(0f, 1f)
+
+    val prims = ArrayList<Prim>()
+    fun add(z: Float, draw: () -> Unit) { prims += Prim(z, draw) }
+    val ww = max(torso * 0.035f, 2.5.dp.toPx())
+    val knob = max(torso * 0.05f, 4.dp.toPx())
+
+    // the arms and legs
+    fun limb(sho: Int, elb: Int, wri: Int, hip: Int, kne: Int, ank: Int, seed: Int) {
+        val s = joint(sho); val e = joint(elb); val h = joint(hip); val k = joint(kne)
+        fun seg(a: V3, b: V3, draw: (Float) -> Unit) { val z = (a.z + b.z) / 2; add(z) { draw(fade(z)) } }
+        if (s != null && e != null) seg(s, e) { a -> bone(xy(s), xy(e), ww * 1.1f, knob, seed, pal, a, inkW) }
+        fun twin(i0: Int, i1: Int, off: Float, wA: Float, wB: Float) { // two thin bones side by side in depth
+            if (!vis(i0) || !vis(i1)) return
+            val p0 = pos(i0); val p1 = pos(i1)
+            for ((n, w) in listOf(1f to wA, -1f to wB)) {
+                val p = rot(p0, depthOf(i0) + n * off); val q = rot(p1, depthOf(i1) + n * off * 0.6f)
+                val z = (p.z + q.z) / 2
+                add(z) { thinBone(xy(p), xy(q), w, pal, fade(z), inkW) }
+            }
+        }
+        twin(elb, wri, ww * 0.55f, ww * 0.32f, ww * 0.32f)
+        if (h != null && k != null) seg(h, k) { a -> bone(xy(h), xy(k), ww * 1.4f, knob * 1.2f, seed + 3, pal, a, inkW) }
+        twin(kne, ank, ww * 0.5f, ww * 0.5f, ww * 0.3f)
+    }
+    limb(11, 13, 15, 23, 25, 27, 100)
+    limb(12, 14, 16, 24, 26, 28, 200)
+
+    // spine, ribs, breastbone, collar bones, shoulder blades
+    val axis = pelvis - neck
+    val u = axis / axis.getDistance().coerceAtLeast(1f)
+    val perp = Offset(-u.y, u.x)
+    val elbow = listOf(13, 14).filter(::vis).map(::pos).firstOrNull()
+    val side = if (elbow != null && (elbow - neck).let { it.x * perp.x + it.y * perp.y } < 0f) -perp else perp
+    val backOff = side * (-torso * 0.13f)
+    val top = neck + backOff
+    val ribW = max(torso * 0.022f, 3.dp.toPx())
+    fun spineAt(t: Float) = top + axis * t
+    for (k in 0 until 5) {
+        val t = 0.10f + 0.10f * k
+        val p = spineAt(t)
+        val bulge = sin(PI * (k + 0.5) / 5).toFloat()
+        val reach = torso * (0.15f + 0.10f * bulge) + torso * 0.13f
+        val rw = hwS * (0.8f + 0.25f * bulge)
+        for (sgn in listOf(1f, -1f)) {
+            val p1 = p + side * (reach * 0.3f); val p2 = p + side * (reach * 0.85f) + u * (torso * 0.03f); val p3 = p + side * reach + u * (torso * 0.05f)
+            val pts = (0..8).map { i ->
+                val f = i / 8f; val g = 1 - f
+                val b0 = g * g * g; val b1 = 3 * g * g * f; val b2 = 3 * g * f * f; val b3 = f * f * f
+                rot(b0 * p.x + b1 * p1.x + b2 * p2.x + b3 * p3.x, b0 * p.y + b1 * p1.y + b2 * p2.y + b3 * p3.y, b1 * sgn * rw * 0.95f + b2 * sgn * rw * 0.6f)
+            }
+            val z = pts.map { it.z }.average().toFloat()
+            add(z) {
+                val a = fade(z)
+                val path = Path().apply { moveTo(pts[0].x, pts[0].y); for (i in 1 until pts.size) lineTo(pts[i].x, pts[i].y) }
+                drawPath(path, pal.ink.copy(alpha = a), style = Stroke(width = ribW + inkW * 2, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                drawPath(path, pal.fill.copy(alpha = a), style = Stroke(width = ribW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            }
+        }
+    }
+    run { // breastbone
+        val a = rot(spineAt(0.1f) + side * (torso * 0.28f), 0f); val b = rot(spineAt(0.5f) + side * (torso * 0.28f), 0f)
+        add(a.z) { thinBone(xy(a), xy(b), ribW * 1.4f, pal, 1f, inkW) }
+    }
+    for (idx in shoulders) {
+        val s = pos(idx); val z = depthOf(idx)
+        val a = rot(neck + backOff * 0.2f, 0f); val b = rot(s, z)
+        val zz = (a.z + b.z) / 2
+        add(zz) { thinBone(xy(a), xy(b), ww * 0.35f, pal, fade(zz), inkW) } // collar bone
+        val sc = rot(s + backOff * 0.55f, z * 1.05f)
+        add(sc.z) { inked(listOf(blob(xy(sc), torso * 0.07f, torso * 0.09f, atan2f(u.y, u.x), 650 + (idx % 2) * 7, 8)), pal, fade(sc.z), inkW) } // shoulder blade
+    }
+    for (i in 0 until 9) {
+        val t = (i + 0.5f) / 9
+        val v = rot(spineAt(t), 0f)
+        val r = torso * (0.028f + 0.030f * t)
+        add(v.z) { inked(listOf(blob(xy(v), r * 1.25f, r, atan2f(u.y, u.x), 900 + i, 8)), pal, 1f, inkW) }
+    }
+    run { // pelvis: two flared wings either side of the sacrum
+        val pc = pelvis + backOff * 0.5f
+        fun pp(x: Float, y: Float) = pc + u * (x * torso) + perp * (y * torso)
+        val base = listOf(
+            -0.06f to -0.17f, 0.00f to -0.19f, 0.06f to -0.14f, 0.12f to -0.07f, 0.14f to 0f, 0.12f to 0.07f,
+            0.06f to 0.14f, 0.00f to 0.19f, -0.06f to 0.17f, -0.02f to 0.07f, -0.02f to -0.07f,
+        )
+        for (sgn in listOf(1f, -1f)) {
+            val pts = base.mapIndexed { i, (x, y) -> val q = pp(x + (rnd(700 + i) - 0.5f) * 0.012f, y + (rnd(720 + i) - 0.5f) * 0.012f); xy(rot(q, sgn * hwH * 0.95f)) }
+            val z = base.indices.map { i -> rot(pp(base[i].first, base[i].second), sgn * hwH * 0.95f).z }.average().toFloat()
+            add(z) { inked(listOf(smoothClosed(pts)), pal, fade(z), inkW) }
+        }
+        val sac = rot(pc, 0f)
+        add(sac.z) { inked(listOf(blob(xy(sac), torso * 0.05f, torso * 0.10f, atan2f(perp.y, perp.x), 770, 8)), pal, 1f, inkW) }
+    }
+
+    run { // the skull: three plates of one profile stacked in depth, so it turns like a solid head
+        val face0 = u * -1f
+        val nose = if (vis(0)) pos(0) else null
+        val earIdx = if (near == 'L') 7 else 8
+        val ear = when { vis(earIdx) -> pos(earIdx); vis(7) -> pos(7); vis(8) -> pos(8); else -> null }
+        var s = torso * 0.16f
+        val face: Offset; val chin: Offset; val centre: Offset
+        if (nose != null && ear != null && (nose - ear).getDistance() > torso * 0.05f) {
+            // measured: the ear-to-nose line is the head axis; in the skull model the ear hole and nose tip are about 11 degrees apart
+            val v = (nose - ear) / (nose - ear).getDistance()
+            var pv = Offset(-v.y, v.x)
+            // the chin points down when looking ahead and back towards the body when looking down; judging it against
+            // 'down' alone flips when the head hangs straight down, which turned the skull upside down
+            val ref = side + u
+            if (pv.x * ref.x + pv.y * ref.y < 0f) pv = -pv
+            val dl = 0.19f
+            face = v * cos(dl) + pv * sin(dl)
+            chin = pv * cos(dl) - v * sin(dl)
+            s = (1.6f * (nose - ear).getDistance() / 1.455f).coerceIn(torso * 0.11f, torso * 0.17f)
+            centre = ear + face * (0.05f * s) - chin * (0.55f * s)
+        } else {
+            // estimated from the nose alone: how far below the neck line it sits tells how far the head hangs
+            var phi = 1.45f
+            if (nose != null) {
+                val hv = nose - neck
+                val dn = hv.x * side.x + hv.y * side.y; val fw = hv.x * face0.x + hv.y * face0.y
+                phi = (0.87f + 1.5f * atan2f(dn, fw)).coerceIn(0.3f, 1.9f)
+            }
+            face = face0 * cos(phi) + side * sin(phi)
+            chin = side * cos(phi) - face0 * sin(phi)
+            centre = if (nose != null && (nose - neck).getDistance() in (torso * 0.1f)..(torso * 0.6f)) nose - face * (s * 1.38f) - chin * (s * 0.28f)
+            else neck + face0 * (torso * 0.24f) + backOff * 0.2f
+        }
+        fun sk(f: Float, d: Float, z: Float) = rot(centre + face * (f * s) + chin * (d * s), z)
+        for (z in listOf(-0.42f * s, 0f, 0.42f * s)) {
+            val pts = SKULL.mapIndexed { i, (f, d) -> xy(sk(f + (rnd(850 + i) - 0.5f) * 0.06f, d + (rnd(870 + i) - 0.5f) * 0.06f, z)) }
+            val zz = sk(0f, 0f, z).z
+            add(zz) {
+                val a = fade(zz)
+                inked(listOf(smoothClosed(pts)), pal, a, inkW)
+                if (z > 0f) { // the near plate carries the features: eye socket, ear hole, nose hole, teeth
+                    val e = xy(sk(0.72f, 0.05f, z)); val nh = xy(sk(1.2f, 0.38f, z)); val eh = xy(sk(-0.05f, 0.55f, z))
+                    val t0 = xy(sk(1.08f, 0.86f, z)); val t1 = xy(sk(0.5f, 0.92f, z))
+                    drawPath(blob(e, s * 0.3f, s * 0.34f, 0f, 830, 8), pal.ink.copy(alpha = a))
+                    drawPath(blob(nh, s * 0.1f, s * 0.14f, 0f, 840, 6), pal.ink.copy(alpha = a))
+                    drawPath(blob(eh, s * 0.1f, s * 0.1f, 0f, 850, 6), pal.ink.copy(alpha = a))
+                    val tw = max(1.2f, s * 0.07f)
+                    drawLine(pal.ink.copy(alpha = a), t0, t1, tw, StrokeCap.Round)
+                    for (k in 0..4) {
+                        val f = k / 4f
+                        val p = t0 + (t1 - t0) * f
+                        drawLine(pal.ink.copy(alpha = a), p, p - chin * (s * 0.16f), tw, StrokeCap.Round)
+                    }
+                }
+            }
+        }
+    }
+    prims.sortedBy { it.z }.forEach { it.draw() }
+}

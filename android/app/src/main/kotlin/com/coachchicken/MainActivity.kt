@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -12,6 +13,45 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.pager.VerticalPager
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.TextButton
+import com.coachchicken.core.CalendarDay
+import com.coachchicken.core.SessionRecord
+import java.time.Instant
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -66,7 +106,14 @@ class MainActivity : ComponentActivity() {
                     val copyLog: (() -> Unit)? =
                         if (vm.hasPoseLog()) ({ clipboard.setText(AnnotatedString(vm.poseLogText())) }) else null
 
-                    when (state.phase) {
+                    var lore by rememberSaveable { mutableStateOf(false) }
+                    val uriHandler = LocalUriHandler.current
+                    val day = state.day
+                    if (lore) {
+                        LoreScreen { lore = false }
+                    } else if (day != null) {
+                        DayScreen(day, vm::closeDay)
+                    } else when (state.phase) {
                         Phase.READY, Phase.PLANKING -> SessionScreen(
                             state = state,
                             onPose = vm::onPose,
@@ -76,7 +123,15 @@ class MainActivity : ComponentActivity() {
                             onFlip = vm::flipCamera,
                             onCopyLog = copyLog,
                         )
-                        Phase.HOME, Phase.DONE -> HomeScreen(state, onStartSession, vm::dismissDone, copyLog)
+                        Phase.HOME -> HomeScreen(
+                            state, onStartSession, copyLog,
+                            onLore = { lore = true },
+                            onIssues = { uriHandler.openUri(ISSUES_URL) },
+                        ) { vm.openDay(it.date) }
+                        Phase.DONE -> {
+                            val card = state.card ?: CardData(SessionRecord("plank", Instant.now(), state.elapsedMs, true), null)
+                            DoneScreen(card, vm::dismissDone)
+                        }
                     }
                 }
             }
@@ -91,28 +146,107 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onDone: () -> Unit, onCopyLog: (() -> Unit)?) {
-    // Scrolls when it doesn't fit (landscape), and is centred when it does.
-    BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding()) {
+internal fun HomeScreen(
+    state: UiState, onStartSession: () -> Unit, onCopyLog: (() -> Unit)?, onLore: () -> Unit = {}, onIssues: () -> Unit = {},
+    onDay: (CalendarDay) -> Unit,
+) {
+    val done = state.streak.doneToday
+    val accent = if (done) StreakGold else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)
+    Column(Modifier.fillMaxSize().systemBarsPadding()) {
+        // a title bar, which also brings the content down the screen
+        var menuOpen by remember { mutableStateOf(false) }
+        Box(Modifier.fillMaxWidth()) {
+            Text(
+                "Coach Chicken", Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
+            )
+            Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)) {
+                IconButton({ menuOpen = true }) {
+                    val bar = MaterialTheme.colorScheme.onSurface
+                    Canvas(Modifier.size(22.dp)) { // a hamburger: three bars
+                        for (k in 0..2) drawLine(bar, Offset(0f, size.height * (0.2f + 0.3f * k)), Offset(size.width, size.height * (0.2f + 0.3f * k)), 2.5.dp.toPx(), StrokeCap.Round)
+                    }
+                }
+                DropdownMenu(menuOpen, { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text(if (onCopyLog != null) "Copy pose log" else "Copy pose log (nothing recorded yet)") },
+                        enabled = onCopyLog != null,
+                        onClick = { menuOpen = false; onCopyLog?.invoke() },
+                    )
+                    DropdownMenuItem(text = { Text("A chicken?") }, onClick = { menuOpen = false; onLore() })
+                    DropdownMenuItem(text = { Text("Log an issue") }, onClick = { menuOpen = false; onIssues() })
+                }
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        // no scrolling: the calendar shows as many weeks as fit under the streak and the call to action (1 to 5)
+        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+        val weeks = ((maxHeight - 476.dp) / 62.dp).toInt().coerceIn(1, 5)
         Column(
-            Modifier.fillMaxWidth().heightIn(min = maxHeight).verticalScroll(rememberScrollState()).padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 56.dp, height = 110.dp))
-            Text("Coach Chicken", style = MaterialTheme.typography.headlineMedium)
-            if (state.phase == Phase.DONE) {
-                Text("Plank done! 🥚 ${formatElapsed(state.elapsedMs)}", style = MaterialTheme.typography.titleLarge)
+            // the streak: big and bright once today's plank is in, muted grey until then; the chicken stands beside it
+            // inset to line up with the edges of the button in the card below (the chicken's picture has blank space at its left, hence the smaller start)
+            Row(Modifier.fillMaxWidth().padding(start = 9.dp, end = 20.dp).height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painterResource(R.drawable.ic_chicken), contentDescription = null,
+                    modifier = Modifier.fillMaxHeight().aspectRatio(56f / 110f), contentScale = ContentScale.Fit,
+                )
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                    Text(state.streak.days.toString(), fontSize = 88.sp, lineHeight = 92.sp, fontWeight = FontWeight.ExtraBold, color = accent)
+                    Text("day streak!", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = accent)
+                }
             }
-            CalendarView(state.calendar, Modifier.fillMaxWidth())
-            if (state.phase == Phase.DONE) {
-                Button(onDone, Modifier.fillMaxWidth()) { Text("OK") }
-            } else {
-                Button(onStartSession, Modifier.fillMaxWidth()) { Text("Start session") }
+            // the big call to action, or the affirmation once it's done
+            Surface(
+                shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = BorderStroke(2.dp, if (done) StreakGold.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text(if (done) "✅" else "⏱️", fontSize = 34.sp) // a check when it's done, a stopwatch when a plank is due
+                        Text(
+                            if (done) "Today's plank is done. Streak extended!" else "Do a plank today to extend your streak!",
+                            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    if (done) OutlinedButton(onStartSession, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)) { Text("ANOTHER SESSION", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp) }
+                    else Button(onStartSession, Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp)) { Text("START SESSION", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp) }
+                }
             }
-            if (onCopyLog != null) {
-                OutlinedButton(onCopyLog, Modifier.fillMaxWidth()) { Text("Copy pose log") }
+            Text("Streak Calendar", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+            Surface(shape = RoundedCornerShape(24.dp), color = Color.Transparent, border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant)) {
+                CalendarView(state.calendar.takeLast(weeks), Modifier.fillMaxWidth().padding(16.dp), onDayClick = onDay)
             }
+        }
+        }
+    }
+}
+
+private val StreakGold = Color(0xFFFFB300)
+private const val ISSUES_URL = "https://github.com/campey/coach-chicken/issues"
+
+/** The cards of one past day: swipe up and down between that day's planks. */
+@Composable
+private fun DayScreen(day: DayView, onClose: () -> Unit) {
+    BackHandler(onBack = onClose)
+    val pager = rememberPagerState { day.cards.size }
+    Column(Modifier.fillMaxSize().systemBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                Text(day.date.format(DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.getDefault())), style = MaterialTheme.typography.titleLarge)
+                if (day.cards.size > 1) Text("${pager.currentPage + 1} of ${day.cards.size} · swipe up for the others", style = MaterialTheme.typography.bodySmall)
+            }
+            TextButton(onClose) { Text("Close") }
+        }
+        // swipe up and down between the day's planks; the top of the next card peeks in below the current one
+        val peek = if (day.cards.size > 1) 64.dp else 0.dp
+        VerticalPager(
+            pager, Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = peek), pageSpacing = 12.dp,
+            beyondViewportPageCount = 1,
+        ) { page ->
+            FitHeight(Modifier.fillMaxSize()) { PlankCardView(day.cards[page], active = pager.currentPage == page) }
         }
     }
 }

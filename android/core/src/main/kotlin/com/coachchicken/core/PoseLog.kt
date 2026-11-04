@@ -62,9 +62,12 @@ class PoseLog(
     private fun f(v: Double, digits: Int) = "%.${digits}f".format(java.util.Locale.ROOT, v)
 
     companion object {
-        /** Nose, shoulders, elbows, wrists, hips, knees, ankles. */
-        val LOGGED = listOf(0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28)
-        private val NAMES = listOf("nose", "lsho", "rsho", "lelb", "relb", "lwri", "rwri", "lhip", "rhip", "lkne", "rkne", "lank", "rank")
+        /** Nose, shoulders, elbows, wrists, hips, knees, ankles, then the rest of the head: eyes, ears, mouth corners. */
+        val LOGGED = listOf(0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 2, 5, 7, 8, 9, 10)
+        private val NAMES = listOf(
+            "nose", "lsho", "rsho", "lelb", "relb", "lwri", "rwri", "lhip", "rhip", "lkne", "rkne", "lank", "rank",
+            "leye", "reye", "lear", "rear", "lmou", "rmou",
+        )
         private val HEADER = "t_ms,phase,grade,plank_s,aura,tgt_off,aspect,side,lower,body_deg,hip_deg,elbow_drop,elbow_off,min_vis," +
             NAMES.joinToString(",") { "${it}_x,${it}_y" }
     }
