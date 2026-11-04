@@ -26,7 +26,9 @@ class PlankRecording(
 
 /** Plain text, one file per plank: a `#plank` header line, then `t_ms,grade,aura,hip,x0,y0,...` rows. */
 object PlankRecordingCodec {
-    const val JOINT_VALUES = 26
+    /** x,y for each of [PoseLog.LOGGED]. Older recordings hold only the first 26 (no eyes, ears or mouth) and are padded. */
+    val JOINT_VALUES = 2 * PoseLog.LOGGED.size
+    private const val LEGACY_VALUES = 26
 
     fun encode(r: PlankRecording): String = buildString {
         append("#plank v1 startedAt=${r.startedAt} aspect=${f(r.aspect, 4)} mirror=${r.mirror} goalMs=${r.goalMs} durationMs=${r.durationMs} completed=${r.completed}${r.target?.let { " target=${f(it.ax,4)};${f(it.ay,4)};${f(it.bx,4)};${f(it.by,4)};${f(it.halfWidth,4)};${it.side}" } ?: ""}\n")
@@ -53,9 +55,9 @@ object PlankRecordingCodec {
             val frames = ArrayList<RecFrame>()
             for (line in lines) {
                 val p = line.split(',')
-                if (p.size != 4 + JOINT_VALUES) continue
+                if (p.size != 4 + JOINT_VALUES && p.size != 4 + LEGACY_VALUES) continue
                 val joints = if (p.drop(4).all { it.isEmpty() }) null
-                else FloatArray(JOINT_VALUES) { p[4 + it].toFloatOrNull() ?: Float.NaN }
+                else FloatArray(JOINT_VALUES) { p.getOrNull(4 + it)?.toFloatOrNull() ?: Float.NaN }
                 frames += RecFrame(p[0].toLong(), p[1].toInt(), p[2].toFloat(), p[3].toFloatOrNull(), joints)
             }
             PlankRecording(
@@ -112,7 +114,7 @@ class PlankRecorder(
             .map { RecFrame(it.tMs - plankStartMs, it.frame.grade, it.frame.aura, it.frame.hipDeg, it.frame.joints) }
 }
 
-/** The 26 joint values for a pose, in [PoseLog.LOGGED] order; a joint below [minVisibility] is NaN. */
+/** The joint values for a pose, in [PoseLog.LOGGED] order; a joint below [minVisibility] is NaN. */
 fun jointsOf(landmarks: List<Landmark>, minVisibility: Float = 0.3f): FloatArray {
     val out = FloatArray(PlankRecordingCodec.JOINT_VALUES)
     PoseLog.LOGGED.forEachIndexed { k, idx ->

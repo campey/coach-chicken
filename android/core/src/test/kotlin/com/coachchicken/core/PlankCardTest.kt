@@ -14,7 +14,7 @@ class PlankCardTest {
     private fun frame(tMs: Long, grade: Int = 3, hip: Float? = 175f, joints: FloatArray? = null) = RecFrame(tMs, grade, 0.5f, hip, joints)
 
     @Test fun codecRoundTrips() {
-        val j = FloatArray(26) { it / 30f }.also { it[3] = Float.NaN }
+        val j = FloatArray(PlankRecordingCodec.JOINT_VALUES) { it / 30f }.also { it[3] = Float.NaN }
         val r = rec(listOf(frame(-500, 1, null), frame(0, 3, 172.5f, j)))
         val back = assertNotNull(PlankRecordingCodec.decode(PlankRecordingCodec.encode(r)))
         assertEquals(r.startedAt, back.startedAt)
@@ -26,6 +26,16 @@ class PlankCardTest {
         assertEquals(172.5f, back.frames[1].hipDeg)
         assertTrue(back.frames[1].joints!![3].isNaN())
         assertEquals(0.2f, back.frames[1].joints!![6], 0.001f)
+    }
+
+    @Test fun oldRecordingsWithoutTheHeadPointsStillLoad() {
+        val old = "#plank v1 startedAt=2026-11-04T05:19:13Z aspect=1.3333 mirror=true goalMs=60000 durationMs=5000 completed=true\n" +
+            "0,3,0.50,172.0," + (0 until 26).joinToString(",") { "0.5" } + "\n"
+        val back = assertNotNull(PlankRecordingCodec.decode(old))
+        val j = back.frames[0].joints!!
+        assertEquals(PlankRecordingCodec.JOINT_VALUES, j.size)
+        assertEquals(0.5f, j[25], 0.001f)
+        assertTrue(j[26].isNaN()) // the eyes, ears and mouth were not recorded
     }
 
     @Test fun decodeRejectsGarbage() {
