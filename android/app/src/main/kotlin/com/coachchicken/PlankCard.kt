@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -26,12 +27,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
@@ -79,6 +84,10 @@ private val CGrey = Color(0xFF9E9E9E)
 private val CInk = Color(0xFF3B2A20)
 private val Violet = Color(0xFFA58CFF)
 private const val REPLAY_SPEED = 20.0
+/** The space left of the plot in both the timeline and the hip chart, so the two line up; the mascot lives in it. */
+private val Gutter = 56.dp
+private val MascotWidth = 48.dp
+private val ChartRight = 10.dp
 
 private fun fmt(sec: Double): String {
     val s = kotlin.math.floor(abs(sec)).toInt()
@@ -94,7 +103,7 @@ private fun gradeColor(score: Double): Color =
  * hip angle. Without a saved recording (older planks) it shows just the header and the length.
  */
 @Composable
-fun PlankCardView(data: CardData, modifier: Modifier = Modifier) {
+fun PlankCardView(data: CardData, modifier: Modifier = Modifier, active: Boolean = true) {
     val rec = data.recording
     val track = remember(rec) { rec?.let { CardTrack(it) } }
     val whenText = remember(data.record) {
@@ -114,7 +123,7 @@ fun PlankCardView(data: CardData, modifier: Modifier = Modifier) {
                 )
             }
         } else {
-            ReplayTiles(track, data, whenText)
+            ReplayTiles(track, data, whenText, active)
         }
     }
 }
@@ -130,6 +139,14 @@ private fun Tile(content: @Composable () -> Unit) {
 private fun Header(completed: Boolean, whenText: String, durationS: Double) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 22.dp, height = 44.dp))
+        HeaderText(completed, whenText, durationS, Modifier.weight(1f))
+    }
+}
+
+/** The title, the date and the duration pill. */
+@Composable
+private fun HeaderText(completed: Boolean, whenText: String, durationS: Double, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Column(Modifier.weight(1f)) {
             Text(if (completed) "Plank complete" else "Plank ended early", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Text(whenText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -145,13 +162,18 @@ private fun Header(completed: Boolean, whenText: String, durationS: Double) {
 }
 
 @Composable
-private fun ColumnScope.ReplayTiles(track: CardTrack, data: CardData, whenText: String) {
+private fun ColumnScope.ReplayTiles(track: CardTrack, data: CardData, whenText: String, active: Boolean) {
     var pos by remember(track) { mutableDoubleStateOf(0.0) }
     var playing by remember(track) { mutableStateOf(true) }
     var wallMs by remember { mutableLongStateOf(0L) }
+    var restart by remember(track) { mutableIntStateOf(0) }
     val stop = track.stopS
+    // coming into view (the card becoming the current page) restarts the replay; leaving it pauses
+    LaunchedEffect(active, track) {
+        if (active) { pos = 0.0; playing = true; restart++ } else playing = false
+    }
 
-    LaunchedEffect(track, playing) {
+    LaunchedEffect(track, playing, restart) {
         if (!playing) return@LaunchedEffect
         if (pos >= stop - 0.01) pos = 0.0
         var last = withFrameNanos { it }
@@ -175,8 +197,16 @@ private fun ColumnScope.ReplayTiles(track: CardTrack, data: CardData, whenText: 
     val scrub: (Double) -> Unit = { playing = false; pos = it }
 
     Tile {
-        Header(data.record.completed, whenText, stop)
-        TimelineBar(track, pos, playing, wallMs, scrub)
+        // the mascot fills the left gutter, the full height of the tile; the plot to its right lines up with the hip chart's
+        Row(Modifier.height(IntrinsicSize.Min)) {
+            Image(
+                painterResource(R.drawable.ic_chicken), contentDescription = null,
+                modifier = Modifier.width(MascotWidth).fillMaxHeight(), contentScale = ContentScale.Fit,
+            )
+            Spacer(Modifier.width(Gutter - MascotWidth))
+            Column(Modifier.weight(1f)) {
+                HeaderText(data.record.completed, whenText, stop)
+                TimelineBar(track, pos, playing, wallMs, scrub)
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -191,6 +221,8 @@ private fun ColumnScope.ReplayTiles(track: CardTrack, data: CardData, whenText: 
                 onClick = { playing = !playing },
                 Modifier.align(Alignment.CenterEnd).size(44.dp), shape = CircleShape, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
             ) { TransportIcon(if (playing) 0 else if (pos >= stop - 0.01) 2 else 1, MaterialTheme.colorScheme.onSurface) }
+        }
+            }
         }
     }
     Tile {
@@ -293,10 +325,11 @@ private fun TimelineBar(track: CardTrack, pos: Double, playing: Boolean, wallMs:
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val surface = MaterialTheme.colorScheme.surface
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val pad = with(density) { 14.dp.toPx() }
-    Canvas(Modifier.fillMaxWidth().height(64.dp).scrubbable(track, pad, pad, onScrub)) {
+    val padL = 0f
+    val padR = with(density) { ChartRight.toPx() }
+    Canvas(Modifier.fillMaxWidth().height(64.dp).scrubbable(track, padL, padR, onScrub)) {
         val stop = track.stopS
-        val x0 = pad; val x1 = size.width - pad
+        val x0 = padL; val x1 = size.width - padR
         fun xOf(t: Double) = x0 + (x1 - x0) * frac(track, t)
         val barTop = 24.dp.toPx(); val barH = 18.dp.toPx()
         val bar = Path().apply { addRoundRect(RoundRect(x0, barTop, x1, barTop + barH, CornerRadius(barH / 2))) }
@@ -402,7 +435,7 @@ private fun HipChart(track: CardTrack, pos: Double, onScrub: (Double) -> Unit) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val ink = MaterialTheme.colorScheme.onSurface
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val padL = with(density) { 34.dp.toPx() }; val padR = with(density) { 10.dp.toPx() }
+    val padL = with(density) { Gutter.toPx() }; val padR = with(density) { ChartRight.toPx() }
     Canvas(Modifier.fillMaxWidth().height(140.dp).scrubbable(track, padL, padR, onScrub)) {
         val top = 8.dp.toPx(); val bottom = size.height - 20.dp.toPx()
         val lo = 150f; val hi = 200f
