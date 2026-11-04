@@ -207,7 +207,9 @@ private fun ColumnScope.ReplayTiles(track: CardTrack, data: CardData, whenText: 
             Column(Modifier.weight(1f)) {
                 HeaderText(data.record.completed, whenText, stop)
                 TimelineBar(track, pos, playing, wallMs, scrub)
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+          // the clock is centred in the space left of the button, so the two never overlap
+          Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     fmt(min(pos, stop)),
@@ -217,9 +219,10 @@ private fun ColumnScope.ReplayTiles(track: CardTrack, data: CardData, whenText: 
                 )
                 Text("/ ${fmt(track.rec.goalMs / 1000.0)}", Modifier.padding(bottom = 8.dp), fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+          }
             OutlinedButton(
                 onClick = { playing = !playing },
-                Modifier.align(Alignment.CenterEnd).size(44.dp), shape = CircleShape, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                Modifier.size(44.dp), shape = CircleShape, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
             ) { TransportIcon(if (playing) 0 else if (pos >= stop - 0.01) 2 else 1, MaterialTheme.colorScheme.onSurface) }
         }
             }

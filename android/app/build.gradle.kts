@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("app.cash.paparazzi") // headless screenshots of the screens: ./gradlew :app:testDebugUnitTest, images in app/build/reports/paparazzi
 }
 
 // Release signing comes from the environment (CI decodes a keystore secret). Without it the release build falls back
@@ -55,6 +56,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     implementation(project(":core"))
 
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")

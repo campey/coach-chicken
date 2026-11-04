@@ -126,7 +126,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: (() -> Unit)?, onDay: (CalendarDay) -> Unit) {
+internal fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: (() -> Unit)?, onDay: (CalendarDay) -> Unit) {
     val done = state.streak.doneToday
     val accent = if (done) StreakGold else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)
     BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding()) {

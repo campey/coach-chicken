@@ -59,3 +59,9 @@ base64 -w0 release.jks     # paste into the RELEASE_KEYSTORE_BASE64 secret
 ```
 
 with `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD` as the other three. Keep `release.jks` somewhere safe and out of the repo: if it is lost, existing installs cannot be updated.
+
+## Seeing the screens without a phone
+
+`./gradlew :app:testDebugUnitTest --tests '*ScreenshotTest*'` renders the home screen, a plank card and the done screen headlessly
+(Paparazzi, no emulator needed); the images land in `android/app/build/reports/paparazzi/debug/images`. The card test replays a
+real recorded plank from `android/app/src/test/resources/run.txt`. It shows the first frame only: the replay animation does not run.
