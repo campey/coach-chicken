@@ -14,7 +14,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.VerticalPager
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.TextButton
 import com.coachchicken.core.CalendarDay
@@ -127,7 +128,7 @@ private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: ((
     }
 }
 
-/** The cards of one past day: swipe between that day's planks. */
+/** The cards of one past day: swipe up and down between that day's planks. */
 @Composable
 private fun DayScreen(day: DayView, onClose: () -> Unit) {
     BackHandler(onBack = onClose)
@@ -136,11 +137,16 @@ private fun DayScreen(day: DayView, onClose: () -> Unit) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
                 Text(day.date.format(DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.getDefault())), style = MaterialTheme.typography.titleLarge)
-                if (day.cards.size > 1) Text("${pager.currentPage + 1} of ${day.cards.size} · swipe for the others", style = MaterialTheme.typography.bodySmall)
+                if (day.cards.size > 1) Text("${pager.currentPage + 1} of ${day.cards.size} · swipe up for the others", style = MaterialTheme.typography.bodySmall)
             }
             TextButton(onClose) { Text("Close") }
         }
-        HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth(), pageSpacing = 12.dp, verticalAlignment = Alignment.Top) { page ->
+        // swipe up and down between the day's planks; the top of the next card peeks in below the current one
+        val peek = if (day.cards.size > 1) 64.dp else 0.dp
+        VerticalPager(
+            pager, Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(bottom = peek), pageSpacing = 12.dp,
+            beyondViewportPageCount = 1,
+        ) { page ->
             Column(Modifier.verticalScroll(rememberScrollState())) { PlankCardView(day.cards[page]) }
         }
     }
