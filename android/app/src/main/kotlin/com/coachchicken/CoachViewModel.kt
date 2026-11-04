@@ -277,7 +277,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
             poseLog.addFrame(cameraMs(), before.phase.name, landmarks, aspect, grade, tracker.smoothed, auraNow, offset)
             lastAspect = aspect
             val hipDeg = landmarks?.let { plankMetrics(it, aspect) }?.takeIf { it.lower != 'H' }?.hipAngleDeg?.toFloat()
-            recorder.add(cameraMs(), grade.ordinal, auraNow, hipDeg, landmarks?.let { jointsOf(it) })
+            recorder.add(cameraMs(), grade.ordinal, auraNow, hipDeg, if (grade == PlankGrade.NO_BODY) null else landmarks?.let { jointsOf(it) }) // no body: whatever the model guessed is noise
             when (event) {
                 PlankTracker.Event.STARTED -> {
                     poseLog.addEvent(cameraMs(), "TRACKER_STARTED")

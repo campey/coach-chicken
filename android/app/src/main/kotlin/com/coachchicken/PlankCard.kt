@@ -183,7 +183,7 @@ private fun ColumnScope.ReplayTiles(track: CardTrack, data: CardData, whenText: 
             OutlinedButton(
                 onClick = { playing = !playing },
                 Modifier.align(Alignment.CenterEnd).size(44.dp), shape = CircleShape, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-            ) { Text(if (playing) "❚❚" else if (pos >= stop - 0.01) "↻" else "▶", fontSize = 16.sp) }
+            ) { TransportIcon(if (playing) 0 else if (pos >= stop - 0.01) 2 else 1, MaterialTheme.colorScheme.onSurface) }
         }
     }
     Tile {
@@ -210,6 +210,27 @@ private fun ColumnScope.ReplayTiles(track: CardTrack, data: CardData, whenText: 
             StatChip("best streak", fmt(s.bestStreakMs / 1000.0), Modifier.weight(1f))
         }
         HipChart(track, pos, scrub)
+    }
+}
+
+/** Pause (0), play (1) or replay (2), drawn so it stays crisp at any size. */
+@Composable
+private fun TransportIcon(kind: Int, color: Color) {
+    Canvas(Modifier.size(20.dp)) {
+        val w = size.width; val h = size.height
+        when (kind) {
+            0 -> {
+                drawRoundRect(color, Offset(w * 0.2f, h * 0.15f), Size(w * 0.2f, h * 0.7f), CornerRadius(2.dp.toPx()))
+                drawRoundRect(color, Offset(w * 0.6f, h * 0.15f), Size(w * 0.2f, h * 0.7f), CornerRadius(2.dp.toPx()))
+            }
+            1 -> drawPath(Path().apply { moveTo(w * 0.28f, h * 0.15f); lineTo(w * 0.88f, h * 0.5f); lineTo(w * 0.28f, h * 0.85f); close() }, color)
+            else -> {
+                val stroke = Stroke(2.2.dp.toPx(), cap = StrokeCap.Round)
+                drawArc(color, startAngle = -60f, sweepAngle = 300f, useCenter = false, topLeft = Offset(w * 0.12f, h * 0.12f), size = Size(w * 0.76f, h * 0.76f), style = stroke)
+                // arrowhead at the arc's start (upper right), pointing along the direction of travel
+                drawPath(Path().apply { moveTo(w * 0.86f, h * 0.06f); lineTo(w * 0.86f, h * 0.36f); lineTo(w * 0.58f, h * 0.24f); close() }, color)
+            }
+        }
     }
 }
 
