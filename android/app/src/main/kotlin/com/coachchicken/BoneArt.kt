@@ -177,21 +177,6 @@ internal fun DrawScope.drawBoneSkeleton(lms: List<Landmark>, at: (Landmark) -> O
             drawPath(rib, pal.ink, style = Stroke(width = ribW + inkW * 2, cap = StrokeCap.Round))
             drawPath(rib, pal.fill, style = Stroke(width = ribW, cap = StrokeCap.Round))
         }
-        // skull, in profile, facing away from the pelvis (so a plank never reads as bowing backwards)
-        run {
-            val face = u * -1f
-            val ang = atan2f(face.y, face.x)
-            val s = torso * 0.15f
-            val nose = if (vis(0)) pos(0) else null
-            val c = if (nose != null && (nose - neck).getDistance() in (torso * 0.1f)..(torso * 0.6f)) nose - face * (s * 1.3f) - side * (s * 0.2f)
-            else neck + face * (torso * 0.22f) + backOffset * 0.2f
-            val cranium = blob(c, s * 1.2f, s, ang, 800, 10)
-            val upperFace = blob(c + face * (s * 0.85f) + side * (s * 0.35f), s * 0.65f, s * 0.55f, ang, 810, 8)
-            val jaw = blob(c + face * (s * 0.55f) + side * (s * 0.85f), s * 0.55f, s * 0.28f, ang, 820, 8)
-            inked(listOf(cranium, upperFace, jaw), pal, 1f, inkW)
-            drawPath(blob(c + face * (s * 0.5f) + side * (s * 0.05f), s * 0.26f, s * 0.3f, ang, 830, 8), pal.ink) // eye socket
-            drawPath(blob(c + face * (s * 1.25f) + side * (s * 0.2f), s * 0.12f, s * 0.16f, ang, 840, 6), pal.ink) // nose hole
-        }
         // vertebrae along the back, small at the neck and bigger towards the pelvis
         val count = 9
         for (i in 0 until count) {
