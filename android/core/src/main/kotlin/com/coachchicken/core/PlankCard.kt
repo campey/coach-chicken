@@ -47,26 +47,20 @@ class CardTrack(val rec: PlankRecording) {
     }
 
     /**
-     * Where the timer stops: the last frame of perfect form (held for at least two samples, so a lone blip doesn't count).
-     * With no perfect form at all, the last moment the hip held near its usual angle with the grade ok for a second.
+     * Where the timer stops: the last frame of perfect form that is still before the final curve out. It needs two
+     * perfect samples in a row (a lone blip does not count), a smoothed grade of at least ok, and the smoothed hip
+     * still near its usual angle, so the form does not read as dropped at the end. With no such frame, the last frame
+     * that is ok with the hip near its usual angle.
      */
     val stopS: Double = run {
         val durS = rec.durationMs / 1000.0
         val inPlank = (0 until n).filter { t[it] >= 0 && t[it] <= durS }
-        val lastPerfect = inPlank.lastOrNull { it > 0 && rawGrade[it] == 3 && rawGrade[it - 1] == 3 }
-        if (lastPerfect != null) return@run maxOf(t[lastPerfect], 1.0).coerceAtMost(maxOf(durS, 1.0))
-        val hs = inPlank.mapNotNull { rawHip[it].takeUnless { v -> v.isNaN() } }.sorted()
-        val thr = (if (hs.isEmpty()) 170.0 else hs[hs.size / 2]) - 8.0
-        var stop = 0.0
-        for (i in inPlank) {
-            var ok = true
-            var j = i
-            while (j >= 0 && t[j] >= t[i] - 0.8) {
-                if (rawGrade[j] < 2 || (!rawHip[j].isNaN() && rawHip[j] < thr)) { ok = false; break }
-                j--
-            }
-            if (ok) stop = t[i]
-        }
+        val hs = inPlank.mapNotNull { hip[it].takeUnless { v -> v.isNaN() } }.sorted()
+        val thr = maxOf(160.0, (if (hs.isEmpty()) 170.0 else hs[hs.size / 2]) - 6.0)
+        val nearUsual = { i: Int -> hip[i].isNaN() || hip[i] >= thr }
+        var stop = inPlank.lastOrNull { it > 0 && rawGrade[it] == 3 && rawGrade[it - 1] == 3 && gradeScore[it] >= 0.5 && nearUsual(it) }?.let { t[it] }
+            ?: inPlank.lastOrNull { rawGrade[it] >= 2 && nearUsual(it) }?.let { t[it] }
+            ?: 0.0
         maxOf(stop, 1.0).coerceAtMost(maxOf(durS, 1.0))
     }
 

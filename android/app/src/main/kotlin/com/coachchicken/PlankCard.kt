@@ -190,7 +190,7 @@ private fun ColumnScope.ReplayTiles(track: CardTrack, data: CardData, whenText: 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Form", fontWeight = FontWeight.ExtraBold)
             Text(
-                if (pos > stop) "after the plank" else if (pos < 0) "before the plank" else if (gs > 0.75) "perfect" else if (gs > 0.3) "close" else "not a plank",
+                if (pos > stop) "after the plank" else if (pos < 0) "before the plank" else if (gs > 0.75) "perfect" else if (gs > 0.3) "good" else "not a plank",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
