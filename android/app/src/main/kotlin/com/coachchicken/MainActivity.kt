@@ -18,6 +18,8 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.TextButton
 import com.coachchicken.core.CalendarDay
+import com.coachchicken.core.SessionRecord
+import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -87,7 +89,11 @@ class MainActivity : ComponentActivity() {
                             onFlip = vm::flipCamera,
                             onCopyLog = copyLog,
                         )
-                        Phase.HOME, Phase.DONE -> HomeScreen(state, onStartSession, vm::dismissDone, copyLog) { vm.openDay(it.date) }
+                        Phase.HOME -> HomeScreen(state, onStartSession, copyLog) { vm.openDay(it.date) }
+                        Phase.DONE -> {
+                            val card = state.card ?: CardData(SessionRecord("plank", Instant.now(), state.elapsedMs, true), null)
+                            DoneScreen(card, vm::dismissDone)
+                        }
                     }
                 }
             }
@@ -102,7 +108,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onDone: () -> Unit, onCopyLog: (() -> Unit)?, onDay: (CalendarDay) -> Unit) {
+private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: (() -> Unit)?, onDay: (CalendarDay) -> Unit) {
     // Scrolls when it doesn't fit (landscape), and is centred when it does.
     BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding()) {
         Column(
@@ -112,16 +118,8 @@ private fun HomeScreen(state: UiState, onStartSession: () -> Unit, onDone: () ->
         ) {
             Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 56.dp, height = 110.dp))
             Text("Coach Chicken", style = MaterialTheme.typography.headlineMedium)
-            val card = state.card
-            if (state.phase == Phase.DONE) {
-                if (card != null) PlankCardView(card)
-                else Text("Plank done! 🥚 ${formatElapsed(state.elapsedMs)}", style = MaterialTheme.typography.titleLarge)
-            }
-            if (state.phase == Phase.DONE) Button(onDone, Modifier.fillMaxWidth()) { Text("OK") }
             CalendarView(state.calendar, Modifier.fillMaxWidth(), onDayClick = onDay)
-            if (state.phase != Phase.DONE) {
-                Button(onStartSession, Modifier.fillMaxWidth()) { Text("Start session") }
-            }
+            Button(onStartSession, Modifier.fillMaxWidth()) { Text("Start session") }
             if (onCopyLog != null) {
                 OutlinedButton(onCopyLog, Modifier.fillMaxWidth()) { Text("Copy pose log") }
             }
