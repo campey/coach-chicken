@@ -187,7 +187,8 @@ internal fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             // the streak: big and bright once today's plank is in, muted grey until then; the chicken stands beside it
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+            // inset to line up with the edges of the button in the card below (the chicken's picture has blank space at its left, hence the smaller start)
+            Row(Modifier.fillMaxWidth().padding(start = 9.dp, end = 20.dp).height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
                 Image(
                     painterResource(R.drawable.ic_chicken), contentDescription = null,
                     modifier = Modifier.fillMaxHeight().aspectRatio(56f / 110f), contentScale = ContentScale.Fit,
