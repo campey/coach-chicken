@@ -13,6 +13,14 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.layout.ContentScale
@@ -133,10 +141,28 @@ internal fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: (
     val accent = if (done) StreakGold else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
         // a title bar, which also brings the content down the screen
-        Text(
-            "Coach Chicken", Modifier.fillMaxWidth().padding(vertical = 18.dp),
-            style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
-        )
+        var menuOpen by remember { mutableStateOf(false) }
+        Box(Modifier.fillMaxWidth()) {
+            Text(
+                "Coach Chicken", Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
+            )
+            Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)) {
+                IconButton({ menuOpen = true }) {
+                    val bar = MaterialTheme.colorScheme.onSurface
+                    Canvas(Modifier.size(22.dp)) { // a hamburger: three bars
+                        for (k in 0..2) drawLine(bar, Offset(0f, size.height * (0.2f + 0.3f * k)), Offset(size.width, size.height * (0.2f + 0.3f * k)), 2.5.dp.toPx(), StrokeCap.Round)
+                    }
+                }
+                DropdownMenu(menuOpen, { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text(if (onCopyLog != null) "Copy pose log" else "Copy pose log (nothing recorded yet)") },
+                        enabled = onCopyLog != null,
+                        onClick = { menuOpen = false; onCopyLog?.invoke() },
+                    )
+                }
+            }
+        }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         // no scrolling: the calendar shows as many weeks as fit under the streak and the call to action (1 to 5)
         BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
@@ -176,9 +202,6 @@ internal fun HomeScreen(state: UiState, onStartSession: () -> Unit, onCopyLog: (
             Text("Streak Calendar", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
             Surface(shape = RoundedCornerShape(24.dp), color = Color.Transparent, border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant)) {
                 CalendarView(state.calendar.takeLast(weeks), Modifier.fillMaxWidth().padding(16.dp), onDayClick = onDay)
-            }
-            if (onCopyLog != null) {
-                OutlinedButton(onCopyLog, Modifier.fillMaxWidth()) { Text("Copy pose log") }
             }
         }
         }
