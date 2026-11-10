@@ -3,6 +3,8 @@ package com.coachchicken
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.widget.Toast
+import androidx.work.ExistingWorkPolicy
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -89,6 +91,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge() // transparent bars; icon colour follows the system light/dark setting
+        Reminders.ensureChannel(this)
+        Reminders.schedule(this, ExistingWorkPolicy.KEEP) // the next daily reminder, if they are on
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(Modifier.fillMaxSize()) {
@@ -107,8 +111,31 @@ class MainActivity : ComponentActivity() {
                         if (vm.hasPoseLog()) ({ clipboard.setText(AnnotatedString(vm.poseLogText())) }) else null
 
                     var lore by rememberSaveable { mutableStateOf(false) }
+                    var showReminders by rememberSaveable { mutableStateOf(false) }
+                    val reminderSettings = remember { ReminderSettings(context) }
+                    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                        reminderSettings.enabled = granted
+                        Reminders.schedule(context, ExistingWorkPolicy.REPLACE)
+                        if (!granted) Toast.makeText(context, "Notifications are off for Coach Chicken in the phone's settings", Toast.LENGTH_LONG).show()
+                    }
                     val uriHandler = LocalUriHandler.current
                     val day = state.day
+                    if (showReminders) {
+                        ReminderDialog(
+                            initialEnabled = reminderSettings.enabled, initialHour = reminderSettings.hour, initialMinute = reminderSettings.minute,
+                            onDismiss = { showReminders = false },
+                            onSave = { enabled, hour, minute ->
+                                showReminders = false
+                                reminderSettings.hour = hour; reminderSettings.minute = minute
+                                if (enabled && !Reminders.notificationsAllowed(context)) {
+                                    askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) // saves once they answer
+                                } else {
+                                    reminderSettings.enabled = enabled
+                                    Reminders.schedule(context, ExistingWorkPolicy.REPLACE)
+                                }
+                            },
+                        )
+                    }
                     if (lore) {
                         LoreScreen { lore = false }
                     } else if (day != null) {
@@ -126,6 +153,7 @@ class MainActivity : ComponentActivity() {
                         Phase.HOME -> HomeScreen(
                             state, onStartSession, copyLog,
                             onLore = { lore = true },
+                            onReminders = { showReminders = true },
                             onIssues = { uriHandler.openUri(ISSUES_URL) },
                         ) { vm.openDay(it.date) }
                         Phase.DONE -> {
@@ -148,6 +176,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 internal fun HomeScreen(
     state: UiState, onStartSession: () -> Unit, onCopyLog: (() -> Unit)?, onLore: () -> Unit = {}, onIssues: () -> Unit = {},
+    onReminders: () -> Unit = {},
     onDay: (CalendarDay) -> Unit,
 ) {
     val done = state.streak.doneToday
@@ -173,6 +202,7 @@ internal fun HomeScreen(
                         enabled = onCopyLog != null,
                         onClick = { menuOpen = false; onCopyLog?.invoke() },
                     )
+                    DropdownMenuItem(text = { Text("Daily reminder") }, onClick = { menuOpen = false; onReminders() })
                     DropdownMenuItem(text = { Text("A chicken?") }, onClick = { menuOpen = false; onLore() })
                     DropdownMenuItem(text = { Text("Log an issue") }, onClick = { menuOpen = false; onIssues() })
                 }

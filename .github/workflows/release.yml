@@ -70,8 +70,11 @@ jobs:
         run: |
           VERSION="${{ steps.tag.outputs.tag }}"
           VERSION="${VERSION#v}"
+          # The version code comes from the version (0.5.1 -> 501) so it always goes up with the version, and a newer
+          # release can be installed over an older one. (The run number made v0.5.0 code 3, below the 0.4.x test builds.)
+          CODE=$(echo "$VERSION" | awk -F'[.-]' '{print $1*10000 + $2*100 + $3}')
           gradle -p android :core:test :app:assembleRelease \
-            -PversionName="$VERSION" -PversionCode="$GITHUB_RUN_NUMBER" --no-daemon
+            -PversionName="$VERSION" -PversionCode="$CODE" --no-daemon
 
       - name: Publish release
         if: steps.tag.outputs.skip != 'true'
