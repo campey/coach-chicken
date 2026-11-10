@@ -122,11 +122,10 @@ class MainActivity : ComponentActivity() {
                     val day = state.day
                     if (showReminders) {
                         ReminderDialog(
-                            initialEnabled = reminderSettings.enabled, initialHour = reminderSettings.hour, initialMinute = reminderSettings.minute,
+                            initialEnabled = reminderSettings.enabled,
                             onDismiss = { showReminders = false },
-                            onSave = { enabled, hour, minute ->
+                            onSave = { enabled ->
                                 showReminders = false
-                                reminderSettings.hour = hour; reminderSettings.minute = minute
                                 if (enabled && !Reminders.notificationsAllowed(context)) {
                                     askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) // saves once they answer
                                 } else {

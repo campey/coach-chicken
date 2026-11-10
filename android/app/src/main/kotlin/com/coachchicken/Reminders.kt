@@ -18,27 +18,24 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.coachchicken.core.ReminderCopy
+import com.coachchicken.core.ReminderSlot
+import com.coachchicken.core.shouldSend
+import com.coachchicken.core.nextSlot
+import androidx.work.workDataOf
 import com.coachchicken.core.completedSessionTimes
 import com.coachchicken.core.currentStreak
-import com.coachchicken.core.nextFireAt
 import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 
-/** The reminder choice, kept in the app's private preferences. Off until the person turns it on. */
+/** Whether reminders are on, kept in the app's private preferences. Off until the person turns them on. */
 class ReminderSettings(context: Context) {
     private val prefs = context.getSharedPreferences("reminder", Context.MODE_PRIVATE)
     var enabled: Boolean
         get() = prefs.getBoolean("enabled", false)
         set(v) = prefs.edit().putBoolean("enabled", v).apply()
-    var hour: Int
-        get() = prefs.getInt("hour", 18)
-        set(v) = prefs.edit().putInt("hour", v).apply()
-    var minute: Int
-        get() = prefs.getInt("minute", 0)
-        set(v) = prefs.edit().putInt("minute", v).apply()
 }
 
 object Reminders {
@@ -49,16 +46,19 @@ object Reminders {
         Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     /**
-     * Queues the next reminder at the chosen time. [policy]: REPLACE when the time changed, KEEP at app start (an entry
-     * already waiting stays), APPEND_OR_REPLACE from the worker itself, which is the entry still running.
+     * Queues the next nudge (morning, midday or streak saver, whichever comes next). [policy]: REPLACE when the setting
+     * changed, KEEP at app start (an entry already waiting stays), APPEND_OR_REPLACE from the worker itself, which is
+     * the entry still running.
      */
     fun schedule(context: Context, policy: ExistingWorkPolicy) {
-        val s = ReminderSettings(context)
         val wm = WorkManager.getInstance(context)
-        if (!s.enabled) { wm.cancelUniqueWork(WORK_NAME); return }
+        if (!ReminderSettings(context).enabled) { wm.cancelUniqueWork(WORK_NAME); return }
         val now = ZonedDateTime.now()
-        val delay = Duration.between(now, nextFireAt(now, s.hour, s.minute))
-        val request = OneTimeWorkRequestBuilder<ReminderWorker>().setInitialDelay(delay.toMillis(), TimeUnit.MILLISECONDS).build()
+        val (slot, at) = nextSlot(now)
+        val request = OneTimeWorkRequestBuilder<ReminderWorker>()
+            .setInitialDelay(Duration.between(now, at).toMillis(), TimeUnit.MILLISECONDS)
+            .setInputData(workDataOf("slot" to slot.name))
+            .build()
         wm.enqueueUniqueWork(WORK_NAME, policy, request)
     }
 
@@ -91,12 +91,13 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
     override suspend fun doWork(): Result {
         val ctx = applicationContext
         if (!ReminderSettings(ctx).enabled) return Result.success()
+        val slot = runCatching { ReminderSlot.valueOf(inputData.getString("slot") ?: "") }.getOrDefault(ReminderSlot.MORNING)
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
         val streak = currentStreak(completedSessionTimes(SessionStore(ctx).readAll(), zone).keys, today)
-        if (!streak.doneToday && Reminders.notificationsAllowed(ctx)) {
+        if (shouldSend(slot, streak) && Reminders.notificationsAllowed(ctx)) {
             Reminders.ensureChannel(ctx)
-            val text = ReminderCopy.pick(streak, today)
+            val text = ReminderCopy.pick(slot, streak, today)
             val open = PendingIntent.getActivity(
                 ctx, 0, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
@@ -110,7 +111,7 @@ class ReminderWorker(context: Context, params: WorkerParameters) : CoroutineWork
                 .setContentIntent(open)
                 .setAutoCancel(true)
                 .build()
-            ctx.getSystemService(NotificationManager::class.java).notify(1, n)
+            ctx.getSystemService(NotificationManager::class.java).notify(slot.ordinal + 1, n)
         }
         Reminders.schedule(ctx, ExistingWorkPolicy.APPEND_OR_REPLACE)
         return Result.success()

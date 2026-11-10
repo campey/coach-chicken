@@ -5,13 +5,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimeInput
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,29 +18,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-/** Turn the daily reminder on or off and pick the time of day. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Turn the daily clucks on or off. */
 @Composable
-fun ReminderDialog(
-    initialEnabled: Boolean, initialHour: Int, initialMinute: Int,
-    onDismiss: () -> Unit, onSave: (enabled: Boolean, hour: Int, minute: Int) -> Unit,
-) {
+fun ReminderDialog(initialEnabled: Boolean, onDismiss: () -> Unit, onSave: (enabled: Boolean) -> Unit) {
     var enabled by remember { mutableStateOf(initialEnabled) }
-    val time = rememberTimePickerState(initialHour, initialMinute, is24Hour = true)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Daily cluck") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("A nudge from the chicken at this time each day, unless today's plank is already done.", style = MaterialTheme.typography.bodyMedium)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Remind me", style = MaterialTheme.typography.titleMedium)
                     Switch(enabled, { enabled = it })
                 }
-                TimeInput(time)
+                Text("6:00 a morning cluck", style = MaterialTheme.typography.bodyLarge)
+                Text("13:00 a lunchtime nudge", style = MaterialTheme.typography.bodyLarge)
+                Text("21:00 a streak saver, only if you have a streak to lose", style = MaterialTheme.typography.bodyLarge)
+                Text("Once today's plank is done, the rest of the day stays quiet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = { TextButton({ onSave(enabled, time.hour, time.minute) }) { Text("Save") } },
+        confirmButton = { TextButton({ onSave(enabled) }) { Text("Save") } },
         dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
     )
 }
