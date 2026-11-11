@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 
 /** Turn the daily clucks on or off. */
 @Composable
-fun ReminderDialog(initialEnabled: Boolean, onDismiss: () -> Unit, onSave: (enabled: Boolean) -> Unit) {
+fun ReminderDialog(initialEnabled: Boolean, onDismiss: () -> Unit, onTest: () -> Unit, onSave: (enabled: Boolean) -> Unit) {
     var enabled by remember { mutableStateOf(initialEnabled) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -35,6 +35,7 @@ fun ReminderDialog(initialEnabled: Boolean, onDismiss: () -> Unit, onSave: (enab
                 Text("13:00 a lunchtime nudge", style = MaterialTheme.typography.bodyLarge)
                 Text("21:00 a streak saver, only if you have a streak to lose", style = MaterialTheme.typography.bodyLarge)
                 Text("Once today's plank is done, the rest of the day stays quiet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onTest) { Text("Send a test cluck in a minute") }
             }
         },
         confirmButton = { TextButton({ onSave(enabled) }) { Text("Save") } },

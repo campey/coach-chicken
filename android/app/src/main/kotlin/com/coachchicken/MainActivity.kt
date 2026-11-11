@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
-import androidx.work.ExistingWorkPolicy
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -92,7 +91,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge() // transparent bars; icon colour follows the system light/dark setting
         Reminders.ensureChannel(this)
-        Reminders.schedule(this, ExistingWorkPolicy.KEEP) // the next daily reminder, if they are on
+        Reminders.schedule(this) // the next daily reminder, if they are on
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(Modifier.fillMaxSize()) {
@@ -115,7 +114,7 @@ class MainActivity : ComponentActivity() {
                     val reminderSettings = remember { ReminderSettings(context) }
                     val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                         reminderSettings.enabled = granted
-                        Reminders.schedule(context, ExistingWorkPolicy.REPLACE)
+                        Reminders.schedule(context)
                         if (!granted) Toast.makeText(context, "Notifications are off for Coach Chicken in the phone's settings", Toast.LENGTH_LONG).show()
                     }
                     val uriHandler = LocalUriHandler.current
@@ -124,13 +123,14 @@ class MainActivity : ComponentActivity() {
                         ReminderDialog(
                             initialEnabled = reminderSettings.enabled,
                             onDismiss = { showReminders = false },
+                            onTest = { Reminders.scheduleTest(context); Toast.makeText(context, "A test cluck is coming in a minute. Lock your phone!", Toast.LENGTH_LONG).show() },
                             onSave = { enabled ->
                                 showReminders = false
                                 if (enabled && !Reminders.notificationsAllowed(context)) {
                                     askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) // saves once they answer
                                 } else {
                                     reminderSettings.enabled = enabled
-                                    Reminders.schedule(context, ExistingWorkPolicy.REPLACE)
+                                    Reminders.schedule(context)
                                 }
                             },
                         )
