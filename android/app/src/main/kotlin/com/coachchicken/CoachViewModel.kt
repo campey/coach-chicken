@@ -113,6 +113,9 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
     private var startedAt: Instant = Instant.now()
     private var startedRealtime = 0L
 
+    /** The sessions on disk changed under us (a restored backup): refresh the calendar and the streak. */
+    fun reloadHome() = _state.update { it.copy(calendar = loadCalendar(), streak = loadStreak()) }
+
     private fun loadStreak(): Streak {
         val zone = ZoneId.systemDefault()
         return currentStreak(completedSessionTimes(store.readAll(), zone).keys, LocalDate.now(zone))

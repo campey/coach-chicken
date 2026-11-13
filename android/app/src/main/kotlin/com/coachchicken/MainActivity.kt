@@ -3,6 +3,7 @@ package com.coachchicken
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import java.time.LocalDate
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -111,6 +112,23 @@ class MainActivity : ComponentActivity() {
 
                     var lore by rememberSaveable { mutableStateOf(false) }
                     var showReminders by rememberSaveable { mutableStateOf(false) }
+                    val exportBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+                        if (uri != null) {
+                            val result = runCatching { BackupManager(context).export(uri) }
+                            Toast.makeText(context, result.fold({ "Backed up $it planks" }, { "The backup failed: ${it.message}" }), Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                        if (uri != null) {
+                            val result = runCatching { BackupManager(context).restore(uri) }
+                            val message = result.fold(
+                                { r -> if (r == null) "That file is not a Coach Chicken backup" else "Restored ${r.sessionsAdded} planks (${r.replaysAdded} replays)" },
+                                { "The restore failed: ${it.message}" },
+                            )
+                            vm.reloadHome()
+                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                        }
+                    }
                     val reminderSettings = remember { ReminderSettings(context) }
                     val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                         reminderSettings.enabled = granted
@@ -153,6 +171,8 @@ class MainActivity : ComponentActivity() {
                             state, onStartSession, copyLog,
                             onLore = { lore = true },
                             onReminders = { showReminders = true },
+                            onBackup = { exportBackup.launch("coach-chicken-backup-${LocalDate.now()}.zip") },
+                            onRestore = { restoreBackup.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) },
                             onIssues = { uriHandler.openUri(ISSUES_URL) },
                         ) { vm.openDay(it.date) }
                         Phase.DONE -> {
@@ -175,7 +195,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 internal fun HomeScreen(
     state: UiState, onStartSession: () -> Unit, onCopyLog: (() -> Unit)?, onLore: () -> Unit = {}, onIssues: () -> Unit = {},
-    onReminders: () -> Unit = {},
+    onReminders: () -> Unit = {}, onBackup: () -> Unit = {}, onRestore: () -> Unit = {},
     onDay: (CalendarDay) -> Unit,
 ) {
     val done = state.streak.doneToday
@@ -202,6 +222,8 @@ internal fun HomeScreen(
                         onClick = { menuOpen = false; onCopyLog?.invoke() },
                     )
                     DropdownMenuItem(text = { Text("Daily reminder") }, onClick = { menuOpen = false; onReminders() })
+                    DropdownMenuItem(text = { Text("Back up data") }, onClick = { menuOpen = false; onBackup() })
+                    DropdownMenuItem(text = { Text("Restore data") }, onClick = { menuOpen = false; onRestore() })
                     DropdownMenuItem(text = { Text("A chicken?") }, onClick = { menuOpen = false; onLore() })
                     DropdownMenuItem(text = { Text("Log an issue") }, onClick = { menuOpen = false; onIssues() })
                 }

@@ -24,4 +24,19 @@ class PlankStore(context: Context) {
         val f = fileFor(startedAt)
         return if (f.exists()) PlankRecordingCodec.decode(f.readText()) else null
     }
+
+    /** Every saved replay as file name to text, for a backup. */
+    @Synchronized
+    fun readAllRaw(): Map<String, String> =
+        dir.listFiles { f -> f.isFile && f.name.endsWith(".txt") }?.associate { it.name to it.readText() } ?: emptyMap()
+
+    /** Writes a replay from a backup unless one with that name is already here. True if it was written. */
+    @Synchronized
+    fun writeRawIfMissing(name: String, text: String): Boolean {
+        dir.mkdirs()
+        val f = File(dir, name)
+        if (f.exists()) return false
+        f.writeText(text)
+        return true
+    }
 }
