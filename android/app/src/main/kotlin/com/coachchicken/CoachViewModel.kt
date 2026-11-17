@@ -66,6 +66,8 @@ data class PoseUi(
     val hipInZone: Boolean? = null,
     /** The head is off the edge of the image: the phone is too close. */
     val headOutOfFrame: Boolean = false,
+    /** The ankles are not in the shot (the knees or only the hips were usable): the phone is too close for the person's length. */
+    val feetOutOfFrame: Boolean = false,
 )
 
 /** Everything one summary card needs: the logged session, and its replay if one was recorded. */
@@ -323,6 +325,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
                             target = target,
                             hipInZone = if (target != null && hip != null) target!!.contains(hip, aspect) else null,
                             headOutOfFrame = landmarks != null && grade != PlankGrade.NO_BODY && headOutOfFrame(landmarks),
+                            feetOutOfFrame = landmarks != null && grade != PlankGrade.NO_BODY && plankMetrics(landmarks, aspect)?.lower.let { it != null && it != 'A' },
                         ),
                     )
                 }
