@@ -299,6 +299,7 @@ private fun CameraPreview(front: Boolean, analyzer: ImageAnalysis.Analyzer, exec
             val camera = if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
             provider.unbindAll()
             provider.bindToLifecycle(lifecycleOwner, camera, preview, analysis)
+            SessionDebug.sink?.invoke("CAMERA_BOUND display_rot=$rotation front=$front")
         }, ContextCompat.getMainExecutor(context))
         onDispose { runCatching { future.get().unbindAll() } }
     }

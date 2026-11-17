@@ -46,6 +46,9 @@ import kotlin.math.sin
  */
 data class WorldView(val yaw: Float = 0f, val pitch: Float = 0f, val roll: Float = 0f)
 
+/** Where the sensor and screen facts for the pose log go (set by the view model). */
+object SessionDebug { @Volatile var sink: ((String) -> Unit)? = null }
+
 /** Live phone orientation from the rotation sensor (3 degrees of freedom), steering the field behind the skeleton. */
 @Composable
 fun rememberWorldView(enabled: Boolean): State<WorldView> {
@@ -73,6 +76,7 @@ fun rememberWorldView(enabled: Boolean): State<WorldView> {
             }
         }
         var smooth = WorldView()
+        var lastLog = 0L
         val r = FloatArray(9)
         // moves [cur] towards [target]: ignores tiny sensor noise, and otherwise eases so the scene never twitches
         fun ease(cur: Float, target: Float): Float {
@@ -114,6 +118,17 @@ fun rememberWorldView(enabled: Boolean): State<WorldView> {
                 val roll = rollRel.coerceIn(-20f, 20f)
                 smooth = WorldView(ease(smooth.yaw, yaw.coerceIn(-60f, 60f)), ease(smooth.pitch, pitch), ease(smooth.roll, roll))
                 if (smooth != state.value) state.value = smooth
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (now - lastLog > 500) {
+                    lastLog = now
+                    SessionDebug.sink?.invoke(
+                        "VIEW rot=${view.display?.rotation} gravity=${if (haveUp) (if (gravitySensor != null) "sensor" else "accel") else "none"} " +
+                            "up_dev=%.2f,%.2f,%.2f rv_up=%.2f,%.2f,%.2f screen_up=%.2f,%.2f rollRaw=%.0f rollBase=%.0f ".format(
+                                if (haveUp) up[0] else Float.NaN, if (haveUp) up[1] else Float.NaN, if (haveUp) up[2] else Float.NaN,
+                                r[6], r[7], r[8], sx, sy, rollRaw, rb,
+                            ) + "yaw=%.0f pitch=%.0f(abs %.0f) roll=%.0f".format(smooth.yaw, smooth.pitch, pitchAbs, smooth.roll),
+                    )
+                }
             }
         }
         if (sensor != null) sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)

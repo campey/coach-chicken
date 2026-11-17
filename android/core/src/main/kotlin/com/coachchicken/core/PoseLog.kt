@@ -6,7 +6,7 @@ package com.coachchicken.core
  * Keeps only the most recent [capacity] lines.
  */
 class PoseLog(
-    private val capacity: Int = 600,
+    private val capacity: Int = 1000,
     private val minIntervalMs: Long = 250,
 ) {
     private val lines = ArrayDeque<String>()

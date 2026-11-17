@@ -130,6 +130,8 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun cameraMs() = SystemClock.elapsedRealtime() - cameraStartedAt
 
+    init { SessionDebug.sink = { poseLog.addEvent(cameraMs(), it) } } // what the phone's sensors and screen say, into the pose log
+
     /** Everything the camera saw in the latest session, ready to paste. */
     fun poseLogText(): String = poseLog.render()
 
@@ -334,6 +336,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        SessionDebug.sink = null
         sounds.release()
     }
 
