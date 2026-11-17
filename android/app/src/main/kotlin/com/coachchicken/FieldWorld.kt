@@ -93,9 +93,9 @@ fun rememberWorldView(enabled: Boolean): State<WorldView> {
                 val haveUp = !up[0].isNaN()
                 val ux = if (haveUp) up[0] else r[6]; val uy = if (haveUp) up[1] else r[7]
                 val (sx, sy) = when (view.display?.rotation ?: Surface.ROTATION_0) {
-                    Surface.ROTATION_90 -> uy to -ux
+                    Surface.ROTATION_90 -> -uy to ux
                     Surface.ROTATION_180 -> -ux to -uy
-                    Surface.ROTATION_270 -> -uy to ux
+                    Surface.ROTATION_270 -> uy to -ux
                     else -> ux to uy
                 }
                 val heading = Math.toDegrees(atan2(de, dn).toDouble()).toFloat()
