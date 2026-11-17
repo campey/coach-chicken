@@ -177,7 +177,7 @@ class MainActivity : ComponentActivity() {
                         ) { vm.openDay(it.date) }
                         Phase.DONE -> {
                             val card = state.card ?: CardData(SessionRecord("plank", Instant.now(), state.elapsedMs, true), null)
-                            DoneScreen(card, vm::dismissDone)
+                            DoneFlow(card, vm::dismissDone)
                         }
                     }
                 }
