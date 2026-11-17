@@ -131,7 +131,7 @@ fun SessionScreen(
             state.pose?.let {
                 // Matches the log's t_ms, so a screen recording can be lined up with a pasted log.
                 Text(
-                    "t=%.1fs".format(it.logMs / 1000.0),
+                    "t=%.1fs  y%.0f p%.0f r%.0f".format(it.logMs / 1000.0, worldView.value.yaw, worldView.value.pitch, worldView.value.roll),
                     color = Color.White,
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.align(Alignment.TopEnd).systemBarsPadding()

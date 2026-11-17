@@ -57,8 +57,14 @@ fun rememberWorldView(enabled: Boolean): State<WorldView> {
         val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val sensor = sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
         var heading0: Float? = null
+        var pitch0: Float? = null
         var smooth = WorldView()
         val r = FloatArray(9)
+        // moves [cur] towards [target]: ignores tiny sensor noise, and otherwise eases so the scene never twitches
+        fun ease(cur: Float, target: Float): Float {
+            val d = target - cur
+            return if (kotlin.math.abs(d) < 0.35f) cur else cur + (d - 0.35f * kotlin.math.sign(d)) * 0.08f
+        }
         val listener = object : SensorEventListener {
             override fun onAccuracyChanged(s: Sensor?, accuracy: Int) = Unit
             override fun onSensorChanged(e: SensorEvent) {
@@ -78,15 +84,14 @@ fun rememberWorldView(enabled: Boolean): State<WorldView> {
                 var yaw = heading - h0
                 while (yaw > 180f) yaw -= 360f
                 while (yaw < -180f) yaw += 360f
-                val pitch = Math.toDegrees(asin(du.coerceIn(-1f, 1f)).toDouble()).toFloat()
-                val roll = Math.toDegrees(atan2(sx, sy).toDouble()).toFloat()
-                val k = 0.2f // a little smoothing so the scene does not jitter
-                smooth = WorldView(
-                    smooth.yaw + (yaw - smooth.yaw) * k,
-                    smooth.pitch + (pitch - smooth.pitch) * k,
-                    smooth.roll + (roll - smooth.roll) * k,
-                )
-                state.value = smooth
+                // pitch is measured from where the phone was propped when the session opened (a propped phone leans back,
+                // which would otherwise push the whole horizon off the screen)
+                val pitchAbs = Math.toDegrees(asin(du.coerceIn(-1f, 1f)).toDouble()).toFloat()
+                val p0 = pitch0 ?: pitchAbs.also { pitch0 = it }
+                val pitch = (pitchAbs - p0).coerceIn(-20f, 20f)
+                val roll = Math.toDegrees(atan2(sx, sy).toDouble()).toFloat().coerceIn(-20f, 20f)
+                smooth = WorldView(ease(smooth.yaw, yaw.coerceIn(-60f, 60f)), ease(smooth.pitch, pitch), ease(smooth.roll, roll))
+                if (smooth != state.value) state.value = smooth
             }
         }
         if (sensor != null) sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
@@ -300,9 +305,8 @@ internal fun StartSequenceLayers(
     val s = StartStages(progress)
     Box(modifier.background(Color.Black)) {
         if (s.worldAlpha > 0f) FieldWorld(view, nowSec, Modifier.fillMaxSize().graphicsLayer { alpha = s.worldAlpha })
-        if (s.cameraAlpha > 0f) {
-            camera(Modifier.fillMaxSize().graphicsLayer { scaleX = s.cameraScale; scaleY = s.cameraScale; alpha = s.cameraAlpha })
-        } else camera(Modifier.fillMaxSize().graphicsLayer { alpha = 0f }) // kept alive: the analysis still needs the camera
+        // one call site, always: moving the camera between two places would rebuild it and restart the camera mid-start
+        camera(Modifier.fillMaxSize().graphicsLayer { scaleX = s.cameraScale; scaleY = s.cameraScale; alpha = s.cameraAlpha })
         if (s.overlayAlpha > 0f) PositionOverlay(s.found, nowSec, Modifier.fillMaxSize().graphicsLayer { alpha = s.overlayAlpha })
         pose(s.avatar)
     }
