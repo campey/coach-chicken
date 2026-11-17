@@ -58,6 +58,7 @@ fun rememberWorldView(enabled: Boolean): State<WorldView> {
         val sensor = sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
         var heading0: Float? = null
         var pitch0: Float? = null
+        var rollBase: Float? = null
         var smooth = WorldView()
         val r = FloatArray(9)
         // moves [cur] towards [target]: ignores tiny sensor noise, and otherwise eases so the scene never twitches
@@ -89,7 +90,14 @@ fun rememberWorldView(enabled: Boolean): State<WorldView> {
                 val pitchAbs = Math.toDegrees(asin(du.coerceIn(-1f, 1f)).toDouble()).toFloat()
                 val p0 = pitch0 ?: pitchAbs.also { pitch0 = it }
                 val pitch = (pitchAbs - p0).coerceIn(-20f, 20f)
-                val roll = Math.toDegrees(atan2(sx, sy).toDouble()).toFloat().coerceIn(-20f, 20f)
+                // the phone starts propped upright, so whatever way up reads at the start counts as level, in quarter turns:
+                // that keeps the world the right way up whatever the sensor's axis conventions turn out to be
+                val rollRaw = Math.toDegrees(atan2(sx, sy).toDouble()).toFloat()
+                val rb = rollBase ?: (Math.round(rollRaw / 90f) * 90f).also { rollBase = it }
+                var rollRel = rollRaw - rb
+                while (rollRel > 180f) rollRel -= 360f
+                while (rollRel < -180f) rollRel += 360f
+                val roll = rollRel.coerceIn(-20f, 20f)
                 smooth = WorldView(ease(smooth.yaw, yaw.coerceIn(-60f, 60f)), ease(smooth.pitch, pitch), ease(smooth.roll, roll))
                 if (smooth != state.value) state.value = smooth
             }
