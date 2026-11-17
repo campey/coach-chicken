@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
+import com.coachchicken.core.Scene
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
@@ -300,10 +301,15 @@ internal fun DrawScope.drawFieldWorld(view: WorldView, nowSec: Float) {
     drawRect(Brush.verticalGradient(listOf(Color(0x0D000000), Color(0x1F000000), Color(0x73000000)), startY = 0f, endY = h)) // keeps the gold skeleton the brightest thing
 }
 
-/** The field behind everything, shown as the camera clears away. */
+/** Draws the [scene] (the location a plank happens in) steered by [view]. New locations get a branch here. */
+internal fun DrawScope.drawScene(scene: Scene, view: WorldView, nowSec: Float) = when (scene) {
+    Scene.FARM -> drawFieldWorld(view, nowSec)
+}
+
+/** The scene behind everything, shown as the camera clears away. */
 @Composable
-internal fun FieldWorld(view: () -> WorldView, nowSec: () -> Float, modifier: Modifier = Modifier) {
-    Canvas(modifier) { drawFieldWorld(view(), nowSec()) }
+internal fun SceneWorld(scene: Scene, view: () -> WorldView, nowSec: () -> Float, modifier: Modifier = Modifier) {
+    Canvas(modifier) { drawScene(scene, view(), nowSec()) }
 }
 
 /**
@@ -312,12 +318,12 @@ internal fun FieldWorld(view: () -> WorldView, nowSec: () -> Float, modifier: Mo
  */
 @Composable
 internal fun StartSequenceLayers(
-    progress: Float, view: () -> WorldView, nowSec: () -> Float, modifier: Modifier = Modifier,
+    progress: Float, view: () -> WorldView, nowSec: () -> Float, modifier: Modifier = Modifier, scene: Scene = Scene.FARM,
     camera: @Composable (Modifier) -> Unit, pose: @Composable (avatar: Float) -> Unit,
 ) {
     val s = StartStages(progress)
     Box(modifier.background(Color.Black)) {
-        if (s.worldAlpha > 0f) FieldWorld(view, nowSec, Modifier.fillMaxSize().graphicsLayer { alpha = s.worldAlpha })
+        if (s.worldAlpha > 0f) SceneWorld(scene, view, nowSec, Modifier.fillMaxSize().graphicsLayer { alpha = s.worldAlpha })
         // one call site, always: moving the camera between two places would rebuild it and restart the camera mid-start
         camera(Modifier.fillMaxSize().graphicsLayer { scaleX = s.cameraScale; scaleY = s.cameraScale; alpha = s.cameraAlpha })
         if (s.overlayAlpha > 0f) PositionOverlay(s.found, nowSec, Modifier.fillMaxSize().graphicsLayer { alpha = s.overlayAlpha })

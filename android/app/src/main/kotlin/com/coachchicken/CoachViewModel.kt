@@ -18,6 +18,7 @@ import com.coachchicken.core.PlankTarget
 import com.coachchicken.core.PlankTimeline
 import com.coachchicken.core.PlankTracker
 import com.coachchicken.core.PoseLog
+import com.coachchicken.core.Scene
 import com.coachchicken.core.PoseReading
 import com.coachchicken.core.SessionRecord
 import com.coachchicken.core.buildCalendar
@@ -223,7 +224,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
             PlankRecording(
                 startedAt = startedAt, aspect = lastAspect, mirror = _state.value.frontCamera, goalMs = timeline.durationMs,
                 durationMs = elapsed, completed = completed, frames = recorder.framesFor(plankStartCameraMs, cameraMs()),
-                target = plankTarget,
+                target = plankTarget, scene = Scene.FARM, // the only location so far
             )
         } else null
         if (recording != null) runCatching { plankStore.save(recording) } // a failed save must not lose the session

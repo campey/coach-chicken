@@ -410,7 +410,11 @@ private fun FormCanvas(track: CardTrack, pos: Double, gs: Double, aura: Double, 
         val w = size.width; val h = size.height
         val bw = max(0.05, fit[1] - fit[0]); val bh = max(0.05, fit[3] - fit[2])
         val s = min(w * 0.8 / bw, h * 0.6 / bh).toFloat()
-        val ox = (w / 2 - s * (fit[0] + fit[1]) / 2).toFloat(); val oy = (h / 2 - s * (fit[2] + fit[3]) / 2).toFloat()
+        val ox = (w / 2 - s * (fit[0] + fit[1]) / 2).toFloat()
+        val oy = (h * 0.8 - s * fit[3]).toFloat() // the body lies on the grass, below the horizon
+        // the scene where the plank happened: the field, level, behind the skeleton
+        val corner = 10.dp.toPx()
+        clipPath(Path().apply { addRoundRect(RoundRect(0f, 0f, w, h, CornerRadius(corner))) }) { drawScene(rec.scene, WorldView(), 0f) }
         val i = track.indexAt(pos)
         val a = track.joints.getOrNull(i) ?: (0 until i).reversed().firstNotNullOfOrNull { track.joints[it] } ?: return@Canvas
         val b = track.joints.getOrNull(min(i + 1, track.n - 1)) ?: a
@@ -426,9 +430,9 @@ private fun FormCanvas(track: CardTrack, pos: Double, gs: Double, aura: Double, 
         val streak = if (inPlank) track.streak[i].toFloat() else 0f
         val grade = if (gs > 0.75) PlankGrade.PERFECT else if (gs > 0.3) PlankGrade.OK else PlankGrade.NOT_PLANK
         val pose = PoseUi(lms, rec.aspect, grade, 0f, aura = aura.toFloat(), streak = streak, judgedSide = rec.target?.side, target = rec.target)
-        drawPoseScene(pose, wallMs, baseColor = gradeColor(gs), heightPx = s, yaw = yaw, pitch = pitch) { x, y ->
-            Offset(ox + (if (rec.mirror) 1 - x else x) * rec.aspect * s, oy + y * s)
-        }
+        fun at(x: Float, y: Float) = Offset(ox + (if (rec.mirror) 1 - x else x) * rec.aspect * s, oy + y * s)
+        drawGroundShadow(pose, 1f, ::at)
+        drawPoseScene(pose, wallMs, baseColor = gradeColor(gs), heightPx = s, yaw = yaw, pitch = pitch) { x, y -> at(x, y) }
     }
 }
 

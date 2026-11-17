@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.coachchicken.core.Scene
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
@@ -57,11 +58,11 @@ fun DoneFlow(card: CardData, onDone: () -> Unit) {
         if (beatOver) { delay(1500); forced = true } // never wait for the rotation for ever
     }
     if (beatOver && (portrait || forced)) DoneScreen(card, onDone)
-    else WinBeat(card.record.durationMs) { beatOver = true }
+    else WinBeat(card.record.durationMs, card.recording?.scene ?: Scene.FARM) { beatOver = true }
 }
 
 @Composable
-private fun WinBeat(elapsedMs: Long, onFinished: () -> Unit) {
+private fun WinBeat(elapsedMs: Long, scene: Scene, onFinished: () -> Unit) {
     val t = remember { Animatable(0f) }
     val clock = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) { while (true) withFrameNanos { clock.floatValue = it / 1e9f } }
@@ -70,7 +71,7 @@ private fun WinBeat(elapsedMs: Long, onFinished: () -> Unit) {
         onFinished()
     }
     Box(Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onFinished() }) {
-        FieldWorld({ WorldView() }, { clock.floatValue }, Modifier.fillMaxSize())
+        SceneWorld(scene, { WorldView() }, { clock.floatValue }, Modifier.fillMaxSize())
         Canvas(Modifier.fillMaxSize()) {
             val p = (t.value / 0.2f).coerceIn(0f, 1f)
             // a pop with a little overshoot

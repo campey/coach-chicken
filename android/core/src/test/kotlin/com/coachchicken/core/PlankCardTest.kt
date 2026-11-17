@@ -38,6 +38,15 @@ class PlankCardTest {
         assertTrue(j[26].isNaN()) // the eyes, ears and mouth were not recorded
     }
 
+    @Test fun theLocationIsKeptAndOldRecordingsAreOnTheFarm() {
+        val r = rec(listOf(frame(0)))
+        assertEquals(Scene.FARM, assertNotNull(PlankRecordingCodec.decode(PlankRecordingCodec.encode(r))).scene)
+        assertTrue(PlankRecordingCodec.encode(r).lines().first().contains("scene=farm"))
+        val old = "#plank v1 startedAt=2026-11-04T05:19:13Z aspect=1.3333 mirror=true goalMs=60000 durationMs=5000 completed=true\n0,3,0.50,172.0\n"
+        assertEquals(Scene.FARM, assertNotNull(PlankRecordingCodec.decode(old)).scene)
+        assertEquals(Scene.FARM, Scene.fromId("somewhere-from-a-newer-version"))
+    }
+
     @Test fun decodeRejectsGarbage() {
         assertNull(PlankRecordingCodec.decode(""))
         assertNull(PlankRecordingCodec.decode("hello"))

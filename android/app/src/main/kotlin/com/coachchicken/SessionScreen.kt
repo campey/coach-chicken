@@ -382,7 +382,7 @@ internal fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier, ava
 }
 
 /** A soft shadow under the body and darker spots under the hands, knees and feet, so it reads as lying on the grass. */
-private fun DrawScope.drawGroundShadow(pose: PoseUi, avatar: Float, at: (Float, Float) -> Offset) {
+internal fun DrawScope.drawGroundShadow(pose: PoseUi, avatar: Float, at: (Float, Float) -> Offset) {
     val lms = pose.landmarks
     if (lms.size < PoseIdx.COUNT) return
     fun p(i: Int): Offset? = lms[i].takeIf { it.visibility >= 0.3f }?.let { at(it.x, it.y) }
