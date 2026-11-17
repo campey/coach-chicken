@@ -9,6 +9,7 @@ import com.coachchicken.core.PoseIdx
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Animatable
@@ -260,7 +261,19 @@ private fun CameraPreview(front: Boolean, analyzer: ImageAnalysis.Analyzer, exec
     // The activity handles rotation itself (so the session survives it); re-bind with the new display rotation so
     // the preview and the analysed frames stay upright.
     val configuration = LocalConfiguration.current
-    val rotation = remember(configuration) { view.display?.rotation ?: Surface.ROTATION_0 }
+    // Flipping between the two landscapes (or back) does not change the configuration, so watch the display itself
+    var rotation by remember { mutableIntStateOf(view.display?.rotation ?: Surface.ROTATION_0) }
+    DisposableEffect(configuration) {
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager
+        val l = object : android.hardware.display.DisplayManager.DisplayListener {
+            override fun onDisplayAdded(id: Int) = Unit
+            override fun onDisplayRemoved(id: Int) = Unit
+            override fun onDisplayChanged(id: Int) { rotation = view.display?.rotation ?: rotation }
+        }
+        rotation = view.display?.rotation ?: rotation
+        dm.registerDisplayListener(l, null)
+        onDispose { dm.unregisterDisplayListener(l) }
+    }
     val previewView = remember {
         PreviewView(context).apply {
             scaleType = PreviewView.ScaleType.FIT_CENTER
