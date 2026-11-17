@@ -59,6 +59,19 @@ fun rememberWorldView(enabled: Boolean): State<WorldView> {
         var heading0: Float? = null
         var pitch0: Float? = null
         var rollBase: Float? = null
+        // gravity straight from the accelerometer: 'up' in the phone's own axes, so roll and pitch are absolute and need no fusion
+        val up = floatArrayOf(Float.NaN, 0f, 0f)
+        val gravitySensor = sm.getDefaultSensor(Sensor.TYPE_GRAVITY)
+        val accelSensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val gravityListener = object : SensorEventListener {
+            override fun onAccuracyChanged(s: Sensor?, accuracy: Int) = Unit
+            override fun onSensorChanged(e: SensorEvent) {
+                val n = kotlin.math.sqrt(e.values[0] * e.values[0] + e.values[1] * e.values[1] + e.values[2] * e.values[2])
+                if (n < 1f) return
+                val a = if (e.sensor.type == Sensor.TYPE_GRAVITY || up[0].isNaN()) 1f else 0.1f // the raw accelerometer is low-passed
+                for (i in 0..2) up[i] = if (up[0].isNaN()) e.values[i] / n else up[i] + (e.values[i] / n - up[i]) * a
+            }
+        }
         var smooth = WorldView()
         val r = FloatArray(9)
         // moves [cur] towards [target]: ignores tiny sensor noise, and otherwise eases so the scene never twitches
@@ -73,7 +86,8 @@ fun rememberWorldView(enabled: Boolean): State<WorldView> {
                 // the way the screen looks (into the screen, like looking through a window), in east/north/up
                 val de = -r[2]; val dn = -r[5]; val du = -r[8]
                 // which way is up, in the phone's own axes, then in the screen's axes for the current rotation
-                val ux = r[6]; val uy = r[7]
+                val haveUp = !up[0].isNaN()
+                val ux = if (haveUp) up[0] else r[6]; val uy = if (haveUp) up[1] else r[7]
                 val (sx, sy) = when (view.display?.rotation ?: Surface.ROTATION_0) {
                     Surface.ROTATION_90 -> uy to -ux
                     Surface.ROTATION_180 -> -ux to -uy
@@ -87,7 +101,7 @@ fun rememberWorldView(enabled: Boolean): State<WorldView> {
                 while (yaw < -180f) yaw += 360f
                 // pitch is measured from where the phone was propped when the session opened (a propped phone leans back,
                 // which would otherwise push the whole horizon off the screen)
-                val pitchAbs = Math.toDegrees(asin(du.coerceIn(-1f, 1f)).toDouble()).toFloat()
+                val pitchAbs = Math.toDegrees(asin((if (haveUp) -up[2] else du).coerceIn(-1f, 1f)).toDouble()).toFloat()
                 val p0 = pitch0 ?: pitchAbs.also { pitch0 = it }
                 val pitch = (pitchAbs - p0).coerceIn(-20f, 20f)
                 // the phone starts propped upright, so whatever way up reads at the start counts as level, in quarter turns:
@@ -103,7 +117,8 @@ fun rememberWorldView(enabled: Boolean): State<WorldView> {
             }
         }
         if (sensor != null) sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
-        onDispose { sm.unregisterListener(listener) }
+        (gravitySensor ?: accelSensor)?.let { sm.registerListener(gravityListener, it, SensorManager.SENSOR_DELAY_GAME) }
+        onDispose { sm.unregisterListener(listener); sm.unregisterListener(gravityListener) }
     }
     return state
 }
