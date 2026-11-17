@@ -1,5 +1,9 @@
 package com.coachchicken
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import com.coachchicken.core.PoseIdx
 import androidx.compose.ui.geometry.Size
@@ -106,6 +110,13 @@ fun SessionScreen(
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     KeepScreenOn(true)
+    // A camera session switches the screen to landscape by itself: held upright, the whole screen turns sideways, which
+    // is the cue to turn the phone to match. It goes back to following the phone when the session closes.
+    val activity = LocalContext.current.findActivity()
+    DisposableEffect(onCam) {
+        if (onCam) activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+    }
     // The start sequence: looking for you -> found -> the camera bounces away -> just the avatar in a field.
     val progress = remember { Animatable(0f) }
     LaunchedEffect(state.phase, onCam) {
@@ -450,4 +461,10 @@ internal fun DrawScope.drawPoseScene(
             val judgedHip = if (pose.judgedSide == 'L') 23 else 24
             if (visible(judgedHip)) drawCircle(Green, 9.dp.toPx(), at(lms[judgedHip]))
         }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
