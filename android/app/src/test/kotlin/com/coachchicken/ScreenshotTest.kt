@@ -6,6 +6,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
 import androidx.compose.ui.unit.dp
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
@@ -58,6 +59,41 @@ class ShortScreenshotTest {
         paparazzi.snapshot {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(Modifier.fillMaxSize()) { HomeScreen(UiState(calendar = cal, streak = Streak(1, true)), {}, null) {} }
+            }
+        }
+    }
+}
+
+/** The session start sequence, frame by frame, in landscape with a stand-in camera feed. */
+class StartSequenceScreenshotTest {
+    @get:Rule val paparazzi = Paparazzi(
+        deviceConfig = DeviceConfig.NEXUS_5.copy(orientation = com.android.resources.ScreenOrientation.LANDSCAPE, screenWidth = 1920, screenHeight = 1080),
+        theme = "android:Theme.Material.NoActionBar",
+    )
+
+    private fun pose(): PoseUi {
+        val text = javaClass.classLoader!!.getResource("run.txt")!!.readText()
+        val rec = com.coachchicken.core.PlankRecordingCodec.decode(text)!!
+        val frame = rec.frames.first { it.tMs >= 20_000 && it.joints != null }
+        val lms = MutableList(33) { com.coachchicken.core.Landmark(0f, 0f, 0f) }
+        com.coachchicken.core.PoseLog.LOGGED.forEachIndexed { q, idx ->
+            val x = frame.joints!![2 * q]; val y = frame.joints!![2 * q + 1]
+            if (!x.isNaN() && !y.isNaN()) lms[idx] = com.coachchicken.core.Landmark(x, y, 1f)
+        }
+        return PoseUi(lms, rec.aspect, com.coachchicken.core.PlankGrade.PERFECT, 1f, aura = 0.8f, streak = 0.5f, judgedSide = rec.target?.side, target = rec.target)
+    }
+
+    @Test fun sequence() {
+        val p = pose()
+        for (progress in listOf(0f, 0.08f, 0.2f, 0.3f, 0.38f, 0.5f, 1f)) {
+            paparazzi.snapshot(name = "p${(progress * 100).toInt()}") {
+                StartSequenceLayers(
+                    progress, { WorldView(yaw = 5f, pitch = 2f, roll = 3f) }, { 1f }, Modifier.fillMaxSize(),
+                    camera = { m ->
+                        androidx.compose.foundation.layout.Box(m.background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(androidx.compose.ui.graphics.Color(0xFF2D323D), androidx.compose.ui.graphics.Color(0xFF14161C)))))
+                    },
+                    pose = { av -> PoseOverlay(p, mirror = true, modifier = Modifier.fillMaxSize(), avatar = av, view = { WorldView(yaw = 5f, pitch = 2f, roll = 3f) }) },
+                )
             }
         }
     }

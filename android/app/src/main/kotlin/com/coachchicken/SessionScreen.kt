@@ -1,6 +1,13 @@
 package com.coachchicken
 
 import android.content.res.Configuration
+import com.coachchicken.core.PoseIdx
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Animatable
 import android.view.Surface
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -99,9 +106,17 @@ fun SessionScreen(
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     KeepScreenOn(true)
+    // The start sequence: looking for you -> found -> the camera bounces away -> just the avatar in a field.
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(state.phase, onCam) {
+        if (onCam && state.phase == Phase.PLANKING) progress.animateTo(1f, tween(2400, easing = LinearEasing)) else progress.animateTo(0f, tween(450))
+    }
+    val clock = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(onCam) { while (onCam) withFrameNanos { clock.floatValue = it / 1e9f } } // read only while drawing, so no recomposition
+    val worldView = rememberWorldView(enabled = onCam && progress.value > 0.02f)
     Box(Modifier.fillMaxSize().background(if (onCam) Color.Black else MaterialTheme.colorScheme.background)) {
         if (onCam) {
-            CameraLayer(state, onPose)
+            CameraLayer(state, onPose, progress.value, { worldView.value }, { clock.floatValue })
             state.pose?.let {
                 // Matches the log's t_ms, so a screen recording can be lined up with a pasted log.
                 Text(
@@ -184,7 +199,9 @@ fun SessionScreen(
 
 /** Camera preview, skeleton overlay and the pose analyser; only exists while the camera is on. */
 @Composable
-private fun CameraLayer(state: UiState, onPose: (List<Landmark>?, Float) -> Unit) {
+private fun CameraLayer(
+    state: UiState, onPose: (List<Landmark>?, Float) -> Unit, progress: Float, view: () -> WorldView, nowSec: () -> Float,
+) {
     val context = LocalContext.current
     val latestOnPose = rememberUpdatedState(onPose)
     val analyzer = remember { PoseAnalyzer(context) { lm, aspect -> latestOnPose.value(lm, aspect) } }
@@ -196,8 +213,11 @@ private fun CameraLayer(state: UiState, onPose: (List<Landmark>?, Float) -> Unit
             analyzer.close()
         }
     }
-    CameraPreview(front = state.frontCamera, analyzer = analyzer, executor = executor, modifier = Modifier.fillMaxSize())
-    PoseOverlay(state.pose, mirror = state.frontCamera, modifier = Modifier.fillMaxSize())
+    StartSequenceLayers(
+        progress, view, nowSec, Modifier.fillMaxSize(),
+        camera = { m -> CameraPreview(front = state.frontCamera, analyzer = analyzer, executor = executor, modifier = m) },
+        pose = { avatar -> PoseOverlay(state.pose, mirror = state.frontCamera, modifier = Modifier.fillMaxSize(), avatar = avatar, view = view) },
+    )
 }
 
 private fun statusText(state: UiState, reached: Boolean): String = when {
@@ -231,7 +251,10 @@ private fun CameraPreview(front: Boolean, analyzer: ImageAnalysis.Analyzer, exec
     val configuration = LocalConfiguration.current
     val rotation = remember(configuration) { view.display?.rotation ?: Surface.ROTATION_0 }
     val previewView = remember {
-        PreviewView(context).apply { scaleType = PreviewView.ScaleType.FIT_CENTER }
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FIT_CENTER
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE // a texture view, so it can scale and fade
+        }
     }
     DisposableEffect(front, rotation) {
         val future = ProcessCameraProvider.getInstance(context)
@@ -303,7 +326,7 @@ private fun DrawScope.drawSparkles(bones: List<Pair<Offset, Offset>>, aura: Floa
  * hip turns green while it is inside the zone.
  */
 @Composable
-private fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier) {
+internal fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier, avatar: Float = 0f, view: () -> WorldView = { WorldView() }) {
     val sparkling = (pose?.aura ?: 0f) > 0.12f
     var clockMs by remember { mutableLongStateOf(0L) }
     LaunchedEffect(sparkling) {
@@ -316,7 +339,37 @@ private fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier) {
         else size.width to (size.width / pose.aspect)
         val ox = (size.width - w) / 2
         val oy = (size.height - h) / 2
-        drawPoseScene(pose, clockMs, heightPx = h) { x, y -> Offset(ox + (if (mirror) 1 - x else x) * w, oy + y * h) }
+        fun at(x: Float, y: Float) = Offset(ox + (if (mirror) 1 - x else x) * w, oy + y * h)
+        // once it is an avatar it lives in the field: it turns with the phone like the scene does, and stands on the grass
+        val v = view()
+        val pxDegX = size.width / (if (size.width > size.height) 80f else 55f)
+        val pxDegY = size.height / (if (size.width > size.height) 38f else 70f)
+        withTransform({
+            if (avatar > 0f) {
+                rotate(v.roll * avatar, Offset(size.width / 2, size.height / 2))
+                translate(-v.yaw * pxDegX * avatar, v.pitch * pxDegY * avatar)
+            }
+        }) {
+            if (avatar > 0f) drawGroundShadow(pose, avatar, ::at)
+            drawPoseScene(pose, clockMs, heightPx = h) { x, y -> at(x, y) }
+        }
+    }
+}
+
+/** A soft shadow under the body and darker spots under the hands, knees and feet, so it reads as lying on the grass. */
+private fun DrawScope.drawGroundShadow(pose: PoseUi, avatar: Float, at: (Float, Float) -> Offset) {
+    val lms = pose.landmarks
+    if (lms.size < PoseIdx.COUNT) return
+    fun p(i: Int): Offset? = lms[i].takeIf { it.visibility >= 0.3f }?.let { at(it.x, it.y) }
+    val touching = listOf(13, 14, 15, 16, 25, 26, 27, 28).mapNotNull(::p)
+    val all = listOf(0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28).mapNotNull(::p)
+    if (touching.isEmpty() || all.isEmpty()) return
+    val ground = touching.maxOf { it.y } + 7.dp.toPx()
+    val cx = (all.minOf { it.x } + all.maxOf { it.x }) / 2
+    val half = (all.maxOf { it.x } - all.minOf { it.x }) / 2 + 14.dp.toPx()
+    drawOval(Color(0xFF0A1A08).copy(alpha = 0.32f * avatar), Offset(cx + 10.dp.toPx() - half, ground - 9.dp.toPx()), Size(2 * half, 20.dp.toPx()))
+    listOf(15, 16, 27, 28).mapNotNull(::p).forEach {
+        drawOval(Color(0xFF0A1A08).copy(alpha = 0.55f * avatar), Offset(it.x - 17.dp.toPx(), ground - 6.5.dp.toPx()), Size(34.dp.toPx(), 13.dp.toPx()))
     }
 }
 
