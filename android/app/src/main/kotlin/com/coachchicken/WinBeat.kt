@@ -29,6 +29,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -62,7 +63,7 @@ fun DoneFlow(card: CardData, onDone: () -> Unit) {
 }
 
 @Composable
-private fun WinBeat(elapsedMs: Long, scene: Scene, onFinished: () -> Unit) {
+internal fun WinBeat(elapsedMs: Long, scene: Scene, onFinished: () -> Unit) {
     val t = remember { Animatable(0f) }
     val clock = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) { while (true) withFrameNanos { clock.floatValue = it / 1e9f } }
@@ -72,25 +73,7 @@ private fun WinBeat(elapsedMs: Long, scene: Scene, onFinished: () -> Unit) {
     }
     Box(Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onFinished() }) {
         SceneWorld(scene, { WorldView() }, { clock.floatValue }, Modifier.fillMaxSize())
-        Canvas(Modifier.fillMaxSize()) {
-            val p = (t.value / 0.2f).coerceIn(0f, 1f)
-            // a pop with a little overshoot
-            val s = 1f + 2.7f * (p - 1f) * (p - 1f) * (p - 1f) + 1.7f * (p - 1f) * (p - 1f)
-            val scale = (if (p < 1f) s.coerceAtLeast(0f) else 1f) * (1f + 0.025f * sin(clock.floatValue * 5f))
-            val cx = size.width / 2; val cy = size.height * 0.4f
-            val h = size.height * 0.34f * scale; val w = h * 0.76f
-            drawCircle(Brush.radialGradient(listOf(Color(0x99FFC107), Color(0x00FFC107)), Offset(cx, cy), h * 1.5f), h * 1.5f, Offset(cx, cy))
-            drawOval(
-                Brush.radialGradient(listOf(Color(0xFFFFF3B0), Color(0xFFFFC107), Color(0xFFD98E00)), Offset(cx - w * 0.2f, cy - h * 0.25f), h * 0.9f),
-                Offset(cx - w / 2, cy - h / 2), Size(w, h),
-            )
-            // sparkles circling the egg
-            if (p >= 1f) for (i in 0 until 8) {
-                val a = clock.floatValue * 0.9f + i * (2 * PI.toFloat() / 8)
-                val r = h * (0.78f + 0.12f * sin(clock.floatValue * 3f + i))
-                drawStar(Offset(cx + cos(a) * r * 1.05f, cy + sin(a) * r * 0.8f), (6 + 4 * ((i + 1) % 3)).dp.toPx(), Color(0xFFFFE082))
-            }
-        }
+        Canvas(Modifier.fillMaxSize()) { drawWinEgg(t.value, clock.floatValue) }
         Column(
             Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -99,4 +82,26 @@ private fun WinBeat(elapsedMs: Long, scene: Scene, onFinished: () -> Unit) {
             Text(formatElapsed(elapsedMs), color = Color(0xFFFFE082), fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
     }
+}
+
+/** The golden egg of the win beat at animation progress [t] (0..1) and clock [sec]: it pops in, glows and sparkles. */
+internal fun DrawScope.drawWinEgg(t: Float, sec: Float) {
+        val p = (t / 0.2f).coerceIn(0f, 1f)
+        // a pop with a little overshoot
+        val s = 1f + 2.7f * (p - 1f) * (p - 1f) * (p - 1f) + 1.7f * (p - 1f) * (p - 1f)
+        val scale = (if (p < 1f) s.coerceAtLeast(0f) else 1f) * (1f + 0.025f * sin(sec * 5f))
+        val cx = size.width / 2; val cy = size.height * 0.4f
+        val h = size.height * 0.34f * scale; val w = h * 0.76f
+        if (h < 2f) return // not popped in yet: a gradient with no radius throws
+        drawCircle(Brush.radialGradient(listOf(Color(0x99FFC107), Color(0x00FFC107)), Offset(cx, cy), h * 1.5f), h * 1.5f, Offset(cx, cy))
+        drawOval(
+            Brush.radialGradient(listOf(Color(0xFFFFF3B0), Color(0xFFFFC107), Color(0xFFD98E00)), Offset(cx - w * 0.2f, cy - h * 0.25f), h * 0.9f),
+            Offset(cx - w / 2, cy - h / 2), Size(w, h),
+        )
+        // sparkles circling the egg
+        if (p >= 1f) for (i in 0 until 8) {
+            val a = sec * 0.9f + i * (2 * PI.toFloat() / 8)
+            val r = h * (0.78f + 0.12f * sin(sec * 3f + i))
+            drawStar(Offset(cx + cos(a) * r * 1.05f, cy + sin(a) * r * 0.8f), (6 + 4 * ((i + 1) % 3)).dp.toPx(), Color(0xFFFFE082))
+        }
 }

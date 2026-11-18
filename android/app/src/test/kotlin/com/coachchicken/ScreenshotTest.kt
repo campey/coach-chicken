@@ -44,6 +44,20 @@ class ScreenshotTest {
         paparazzi.snapshot { MaterialTheme(colorScheme = darkColorScheme()) { Surface(Modifier.fillMaxSize()) { androidx.compose.foundation.layout.Box(Modifier.padding(16.dp)) { PlankCardView(card()) } } } }
     }
 
+    /** The first frame of the win beat has the egg at scale 0; that used to crash on a zero-radius gradient. */
+    @Test fun winBeat() {
+        paparazzi.snapshot { MaterialTheme(colorScheme = darkColorScheme()) { Surface(Modifier.fillMaxSize()) { WinBeat(62_000, com.coachchicken.core.Scene.FARM) {} } } }
+    }
+
+    /** The egg at every stage of the pop, including the zero-size start. */
+    @Test fun winEggStages() {
+        for (p in listOf(0f, 0.02f, 0.1f, 0.2f, 0.6f, 1f)) {
+            paparazzi.snapshot(name = "egg${(p * 100).toInt()}") {
+                androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) { drawWinEgg(p, 1.3f) }
+            }
+        }
+    }
+
     @Test fun doneScreen() {
         paparazzi.snapshot { MaterialTheme(colorScheme = darkColorScheme()) { Surface(Modifier.fillMaxSize()) { DoneScreen(card()) {} } } }
     }
