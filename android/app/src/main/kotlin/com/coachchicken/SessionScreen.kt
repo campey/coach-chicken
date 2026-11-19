@@ -403,11 +403,12 @@ internal fun PoseOverlay(
     Canvas(modifier) {
         val aspect = pose?.aspect ?: (4f / 3f)
         val viewAspect = size.width / size.height
-        // the whole camera frame, pinned to the top-left like the live preview; the avatar lives inside this same frame,
-        // so the corner marks keep meaning something once the camera has gone
+        // the whole camera frame, like the live preview; the avatar lives inside this same frame, so the corner marks
+        // keep meaning something once the camera has gone
         val w = if (viewAspect > aspect) size.height * aspect else size.width
         val h = if (viewAspect > aspect) size.height else size.width / aspect
-        val ox = 0f
+        // pinned left while the camera shows; once the scene is up the frame (and the player in it) glides to the centre
+        val ox = (size.width - w) / 2 * avatar.coerceIn(0f, 1f)
         val oy = 0f
         fun at(x: Float, y: Float) = Offset(ox + (if (mirror) 1 - x else x) * w, oy + y * h)
         drawCaptureMarks(ox, oy, w, h, 1f)
