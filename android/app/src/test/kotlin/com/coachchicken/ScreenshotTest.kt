@@ -60,6 +60,17 @@ class ScreenshotTest {
         }
     }
 
+    /** The win beat's banner once it has slid in, over the field. */
+    @Test fun winBanner() {
+        paparazzi.snapshot { MaterialTheme(colorScheme = darkColorScheme()) { Surface(Modifier.fillMaxSize()) {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+                SceneWorld(com.coachchicken.core.Scene.FARM, { WorldView() }, { 1f }, Modifier.fillMaxSize())
+                androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) { drawWinEgg(1f, 1.3f) }
+                WinBanner(62_000, Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(bottom = 24.dp))
+            }
+        } } }
+    }
+
     @Test fun doneScreen() {
         paparazzi.snapshot { MaterialTheme(colorScheme = darkColorScheme()) { Surface(Modifier.fillMaxSize()) { DoneScreen(card()) {} } } }
     }

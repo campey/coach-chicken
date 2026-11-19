@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,9 +72,10 @@ fun DoneScreen(card: CardData, onDone: () -> Unit) {
                 }.background(backdrop).padding(4.dp),
             ) { PlankCardView(card) }
         }
-        Row(Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(
-                onClick = {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            HudButton(
+                "Share",
+                {
                     scope.launch {
                         runCatching {
                             val bitmap = layer.toImageBitmap().asAndroidBitmap()
@@ -81,28 +83,10 @@ fun DoneScreen(card: CardData, onDone: () -> Unit) {
                         }
                     }
                 },
-                Modifier.size(56.dp), shape = RoundedCornerShape(16.dp), border = BorderStroke(2.dp, MaterialTheme.colorScheme.outline),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-            ) { ShareIcon(MaterialTheme.colorScheme.primary) }
-            Button(onDone, Modifier.weight(1f).fillMaxSize(), shape = RoundedCornerShape(16.dp)) {
-                Text("DONE", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
-            }
+                Modifier.width(150.dp), HudStyle.SECONDARY, height = 56.dp,
+            )
+            HudButton("Done", onDone, Modifier.weight(1f), HudStyle.PRIMARY, height = 56.dp)
         }
-    }
-}
-
-/** An arrow rising out of an open box. */
-@Composable
-private fun ShareIcon(color: Color) {
-    Canvas(Modifier.size(26.dp)) {
-        val w = size.width; val h = size.height
-        val stroke = Stroke(2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-        drawPath(Path().apply { moveTo(w * 0.5f, h * 0.62f); lineTo(w * 0.5f, h * 0.08f) }, color, style = stroke)
-        drawPath(Path().apply { moveTo(w * 0.28f, h * 0.28f); lineTo(w * 0.5f, h * 0.06f); lineTo(w * 0.72f, h * 0.28f) }, color, style = stroke)
-        drawPath(
-            Path().apply { moveTo(w * 0.2f, h * 0.4f); lineTo(w * 0.1f, h * 0.4f); lineTo(w * 0.1f, h * 0.94f); lineTo(w * 0.9f, h * 0.94f); lineTo(w * 0.9f, h * 0.4f); lineTo(w * 0.8f, h * 0.4f) },
-            color, style = stroke,
-        )
     }
 }
 

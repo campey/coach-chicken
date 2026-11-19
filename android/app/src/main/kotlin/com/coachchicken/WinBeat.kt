@@ -30,6 +30,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -74,13 +75,22 @@ internal fun WinBeat(elapsedMs: Long, scene: Scene, onFinished: () -> Unit) {
     Box(Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onFinished() }) {
         SceneWorld(scene, { WorldView() }, { clock.floatValue }, Modifier.fillMaxSize())
         Canvas(Modifier.fillMaxSize()) { drawWinEgg(t.value, clock.floatValue) }
-        Column(
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text("Plank complete!", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold)
-            Text(formatElapsed(elapsedMs), color = Color(0xFFFFE082), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        }
+        // the banner slides in from the left once the egg has popped, like a game's victory screen
+        val bannerIn = remember { Animatable(0f) }
+        LaunchedEffect(Unit) { delay(350); bannerIn.animateTo(1f, tween(380)) }
+        WinBanner(elapsedMs, Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp), shown = { bannerIn.value })
+    }
+}
+
+/** "Plank complete!" over the time, in the game-style HUD; [shown] (0..1) slides it in from the left. */
+@Composable
+internal fun WinBanner(elapsedMs: Long, modifier: Modifier = Modifier, shown: () -> Float = { 1f }) {
+    Column(
+        modifier.graphicsLayer { translationX = -(1f - shown()) * 900f; alpha = shown().coerceIn(0f, 1f) },
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        HudBanner("Plank complete!")
+        HudTimer(formatElapsed(elapsedMs), reached = true)
     }
 }
 

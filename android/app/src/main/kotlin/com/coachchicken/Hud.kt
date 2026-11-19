@@ -97,3 +97,20 @@ fun HudTag(text: String, modifier: Modifier = Modifier) {
         )
     }
 }
+
+/** The big victory banner: a wide slanted yellow tile with bold italic capitals and a hard shadow; the text shrinks to fit. */
+@Composable
+fun HudBanner(text: String, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
+        val compact = maxWidth < 420.dp
+        Box(Modifier.height(if (compact) 60.dp else 78.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.matchParentSize().offset(4.dp, 6.dp).clip(Slanted).background(HudNavy))
+            Box(Modifier.matchParentSize().clip(Slanted).background(HudYellow).border(BorderStroke(3.dp, Color(0xFFFFF6A0)), Slanted))
+            Text(
+                text.uppercase(), color = Color(0xFF14183A), fontSize = if (compact) 22.sp else 34.sp, fontWeight = FontWeight.Black,
+                fontStyle = FontStyle.Italic, letterSpacing = 1.sp, maxLines = 1, softWrap = false,
+                modifier = Modifier.padding(horizontal = if (compact) 30.dp else 48.dp),
+            )
+        }
+    }
+}
