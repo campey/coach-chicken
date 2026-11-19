@@ -11,6 +11,16 @@ import java.util.Locale
  */
 class RecFrame(val tMs: Long, val grade: Int, val aura: Float, val hipDeg: Float?, val joints: FloatArray?)
 
+/** Where a plank happened: the background of its session and its card. Add a location here and in the app's `drawScene`. */
+enum class Scene(val id: String) {
+    FARM("farm");
+
+    companion object {
+        /** The scene saved as [id]; planks from before locations existed, and ids this version does not know, are on the farm. */
+        fun fromId(id: String?): Scene = entries.firstOrNull { it.id == id } ?: FARM
+    }
+}
+
 /** A finished plank, kept so its card can be replayed. [mirror] is true for the front camera (the preview is mirrored). */
 class PlankRecording(
     val startedAt: Instant,
@@ -22,6 +32,8 @@ class PlankRecording(
     val frames: List<RecFrame>,
     /** The green goal zone as it was when the plank started, drawn on the form tile. */
     val target: PlankTarget? = null,
+    /** The location, drawn behind the skeleton on the card. */
+    val scene: Scene = Scene.FARM,
 )
 
 /** Plain text, one file per plank: a `#plank` header line, then `t_ms,grade,aura,hip,x0,y0,...` rows. */
@@ -31,7 +43,7 @@ object PlankRecordingCodec {
     private const val LEGACY_VALUES = 26
 
     fun encode(r: PlankRecording): String = buildString {
-        append("#plank v1 startedAt=${r.startedAt} aspect=${f(r.aspect, 4)} mirror=${r.mirror} goalMs=${r.goalMs} durationMs=${r.durationMs} completed=${r.completed}${r.target?.let { " target=${f(it.ax,4)};${f(it.ay,4)};${f(it.bx,4)};${f(it.by,4)};${f(it.halfWidth,4)};${it.side}" } ?: ""}\n")
+        append("#plank v1 startedAt=${r.startedAt} aspect=${f(r.aspect, 4)} mirror=${r.mirror} goalMs=${r.goalMs} durationMs=${r.durationMs} completed=${r.completed} scene=${r.scene.id}${r.target?.let { " target=${f(it.ax,4)};${f(it.ay,4)};${f(it.bx,4)};${f(it.by,4)};${f(it.halfWidth,4)};${it.side}" } ?: ""}\n")
         for (fr in r.frames) {
             append(fr.tMs).append(',').append(fr.grade).append(',').append(f(fr.aura, 2)).append(',')
             append(fr.hipDeg?.let { f(it, 1) } ?: "")
@@ -68,6 +80,7 @@ object PlankRecordingCodec {
                 durationMs = kv.getValue("durationMs").toLong(),
                 completed = kv.getValue("completed").toBooleanStrict(),
                 frames = frames,
+                scene = Scene.fromId(kv["scene"]),
                 target = kv["target"]?.split(';')?.takeIf { it.size == 6 }?.let {
                     PlankTarget(it[0].toFloat(), it[1].toFloat(), it[2].toFloat(), it[3].toFloat(), it[4].toFloat(), it[5][0])
                 },

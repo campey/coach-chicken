@@ -3,6 +3,8 @@ package com.coachchicken
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import java.time.LocalDate
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -39,6 +41,10 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
@@ -89,6 +95,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge() // transparent bars; icon colour follows the system light/dark setting
+        Reminders.ensureChannel(this)
+        Reminders.schedule(this) // the next daily reminder, if they are on
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(Modifier.fillMaxSize()) {
@@ -107,8 +115,48 @@ class MainActivity : ComponentActivity() {
                         if (vm.hasPoseLog()) ({ clipboard.setText(AnnotatedString(vm.poseLogText())) }) else null
 
                     var lore by rememberSaveable { mutableStateOf(false) }
+                    var showReminders by rememberSaveable { mutableStateOf(false) }
+                    val exportBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+                        if (uri != null) {
+                            val result = runCatching { BackupManager(context).export(uri) }
+                            Toast.makeText(context, result.fold({ "Backed up $it planks" }, { "The backup failed: ${it.message}" }), Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    val restoreBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                        if (uri != null) {
+                            val result = runCatching { BackupManager(context).restore(uri) }
+                            val message = result.fold(
+                                { r -> if (r == null) "That file is not an Aura Farm backup" else "Restored ${r.sessionsAdded} planks (${r.replaysAdded} replays)" },
+                                { "The restore failed: ${it.message}" },
+                            )
+                            vm.reloadHome()
+                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    val reminderSettings = remember { ReminderSettings(context) }
+                    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                        reminderSettings.enabled = granted
+                        Reminders.schedule(context)
+                        if (!granted) Toast.makeText(context, "Notifications are off for Aura Farm in the phone's settings", Toast.LENGTH_LONG).show()
+                    }
                     val uriHandler = LocalUriHandler.current
                     val day = state.day
+                    if (showReminders) {
+                        ReminderDialog(
+                            initialEnabled = reminderSettings.enabled,
+                            onDismiss = { showReminders = false },
+                            onTest = { Reminders.scheduleTest(context); Toast.makeText(context, "A test cluck is coming in a minute. Lock your phone!", Toast.LENGTH_LONG).show() },
+                            onSave = { enabled ->
+                                showReminders = false
+                                if (enabled && !Reminders.notificationsAllowed(context)) {
+                                    askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) // saves once they answer
+                                } else {
+                                    reminderSettings.enabled = enabled
+                                    Reminders.schedule(context)
+                                }
+                            },
+                        )
+                    }
                     if (lore) {
                         LoreScreen { lore = false }
                     } else if (day != null) {
@@ -126,11 +174,14 @@ class MainActivity : ComponentActivity() {
                         Phase.HOME -> HomeScreen(
                             state, onStartSession, copyLog,
                             onLore = { lore = true },
+                            onReminders = { showReminders = true },
+                            onBackup = { exportBackup.launch("aura-farm-backup-${LocalDate.now()}.zip") },
+                            onRestore = { restoreBackup.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) },
                             onIssues = { uriHandler.openUri(ISSUES_URL) },
                         ) { vm.openDay(it.date) }
                         Phase.DONE -> {
                             val card = state.card ?: CardData(SessionRecord("plank", Instant.now(), state.elapsedMs, true), null)
-                            DoneScreen(card, vm::dismissDone)
+                            DoneFlow(card, vm::dismissDone)
                         }
                     }
                 }
@@ -148,21 +199,25 @@ class MainActivity : ComponentActivity() {
 @Composable
 internal fun HomeScreen(
     state: UiState, onStartSession: () -> Unit, onCopyLog: (() -> Unit)?, onLore: () -> Unit = {}, onIssues: () -> Unit = {},
+    onReminders: () -> Unit = {}, onBackup: () -> Unit = {}, onRestore: () -> Unit = {},
     onDay: (CalendarDay) -> Unit,
 ) {
     val done = state.streak.doneToday
-    val accent = if (done) StreakGold else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)
-    Column(Modifier.fillMaxSize().systemBarsPadding()) {
+    // the home screen is always dark navy, in the game style, whatever the system theme says
+    MaterialTheme(colorScheme = darkColorScheme(background = Color(0xFF0B1230), surface = Color(0xFF0B1230), onSurface = Color.White)) {
+    val accent = if (done) StreakGold else Color.White.copy(alpha = 0.32f)
+    Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF16205A), Color(0xFF0B1230), Color(0xFF070B1F)))).systemBarsPadding()) {
         // a title bar, which also brings the content down the screen
         var menuOpen by remember { mutableStateOf(false) }
         Box(Modifier.fillMaxWidth()) {
             Text(
-                "Coach Chicken", Modifier.fillMaxWidth().padding(vertical = 18.dp),
-                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
+                "AURA FARM", Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                fontSize = 22.sp, fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic, letterSpacing = 2.sp,
+                color = Color.White, textAlign = TextAlign.Center,
             )
             Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)) {
                 IconButton({ menuOpen = true }) {
-                    val bar = MaterialTheme.colorScheme.onSurface
+                    val bar = Color.White
                     Canvas(Modifier.size(22.dp)) { // a hamburger: three bars
                         for (k in 0..2) drawLine(bar, Offset(0f, size.height * (0.2f + 0.3f * k)), Offset(size.width, size.height * (0.2f + 0.3f * k)), 2.5.dp.toPx(), StrokeCap.Round)
                     }
@@ -173,12 +228,16 @@ internal fun HomeScreen(
                         enabled = onCopyLog != null,
                         onClick = { menuOpen = false; onCopyLog?.invoke() },
                     )
+                    DropdownMenuItem(text = { Text("Daily reminder") }, onClick = { menuOpen = false; onReminders() })
+                    DropdownMenuItem(text = { Text("Back up data") }, onClick = { menuOpen = false; onBackup() })
+                    DropdownMenuItem(text = { Text("Restore data") }, onClick = { menuOpen = false; onRestore() })
                     DropdownMenuItem(text = { Text("A chicken?") }, onClick = { menuOpen = false; onLore() })
                     DropdownMenuItem(text = { Text("Log an issue") }, onClick = { menuOpen = false; onIssues() })
                 }
             }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        // a slanted yellow stripe under the title, like a game menu's header
+        Box(Modifier.fillMaxWidth().height(4.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, HudYellow, Color.Transparent))))
         // no scrolling: the calendar shows as many weeks as fit under the streak and the call to action (1 to 5)
         BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
         val weeks = ((maxHeight - 476.dp) / 62.dp).toInt().coerceIn(1, 5)
@@ -186,41 +245,47 @@ internal fun HomeScreen(
             Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            // the streak: big and bright once today's plank is in, muted grey until then; the chicken stands beside it
+            // the streak: big and bright once today's plank is in, muted until then; the chicken stands beside it
             // inset to line up with the edges of the button in the card below (the chicken's picture has blank space at its left, hence the smaller start)
-            Row(Modifier.fillMaxWidth().padding(start = 9.dp, end = 20.dp).height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(start = 9.dp, end = 8.dp).height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
                 Image(
                     painterResource(R.drawable.ic_chicken), contentDescription = null,
                     modifier = Modifier.fillMaxHeight().aspectRatio(56f / 110f), contentScale = ContentScale.Fit,
                 )
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                    Text(state.streak.days.toString(), fontSize = 88.sp, lineHeight = 92.sp, fontWeight = FontWeight.ExtraBold, color = accent)
-                    Text("day streak!", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = accent)
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HudTile(fill = HudNavy.copy(alpha = 0.9f), edge = if (done) StreakGold else Color.White.copy(alpha = 0.25f), lean = 20.dp) {
+                        Text(
+                            state.streak.days.toString(), fontSize = 80.sp, lineHeight = 84.sp, fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic,
+                            color = accent, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
+                        )
+                    }
+                    Text("DAY STREAK!", fontSize = 24.sp, fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic, letterSpacing = 1.sp, color = accent)
                 }
             }
             // the big call to action, or the affirmation once it's done
-            Surface(
-                shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                border = BorderStroke(2.dp, if (done) StreakGold.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant),
-            ) {
-                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            HudTile(Modifier.fillMaxWidth(), edge = if (done) StreakGold else HudCyan, lean = 18.dp) {
+                Column(Modifier.fillMaxWidth().padding(vertical = 20.dp, horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         Text(if (done) "✅" else "⏱️", fontSize = 34.sp) // a check when it's done, a stopwatch when a plank is due
                         Text(
                             if (done) "Today's plank is done. Streak extended!" else "Do a plank today to extend your streak!",
-                            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, fontStyle = FontStyle.Italic, color = Color.White,
                         )
                     }
-                    if (done) OutlinedButton(onStartSession, Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp)) { Text("ANOTHER SESSION", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp) }
-                    else Button(onStartSession, Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp)) { Text("START SESSION", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp) }
+                    if (done) HudButton("Another session", onStartSession, Modifier.fillMaxWidth(), HudStyle.SECONDARY, height = 52.dp)
+                    else HudButton("Start session", onStartSession, Modifier.fillMaxWidth(), HudStyle.PRIMARY, height = 60.dp)
                 }
             }
-            Text("Streak Calendar", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-            Surface(shape = RoundedCornerShape(24.dp), color = Color.Transparent, border = BorderStroke(2.dp, MaterialTheme.colorScheme.outlineVariant)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("STREAK CALENDAR", fontSize = 22.sp, fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic, letterSpacing = 1.sp, color = Color.White)
+                Box(Modifier.width(84.dp).height(5.dp).clip(SlantShape(5.dp)).background(HudYellow))
+            }
+            HudTile(Modifier.fillMaxWidth(), fill = HudNavy.copy(alpha = 0.55f), edge = HudCyan.copy(alpha = 0.55f), lean = 16.dp) {
                 CalendarView(state.calendar.takeLast(weeks), Modifier.fillMaxWidth().padding(16.dp), onDayClick = onDay)
             }
         }
         }
+    }
     }
 }
 

@@ -18,4 +18,12 @@ class SessionStore(context: Context) {
     @Synchronized
     fun readAll(): List<SessionRecord> =
         if (file.exists()) SessionCsv.parseAll(file.readText()) else emptyList()
+
+    /** The raw log text, for a backup. */
+    @Synchronized
+    fun readText(): String = if (file.exists()) file.readText() else ""
+
+    /** Replaces the log with [text] (the merged log, when restoring a backup). */
+    @Synchronized
+    fun writeText(text: String) = file.writeText(text)
 }

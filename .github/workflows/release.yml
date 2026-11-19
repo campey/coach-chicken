@@ -70,8 +70,11 @@ jobs:
         run: |
           VERSION="${{ steps.tag.outputs.tag }}"
           VERSION="${VERSION#v}"
+          # The version code comes from the version (0.5.1 -> 501) so it always goes up with the version, and a newer
+          # release can be installed over an older one. (The run number made v0.5.0 code 3, below the 0.4.x test builds.)
+          CODE=$(echo "$VERSION" | awk -F'[.-]' '{print $1*10000 + $2*100 + $3}')
           gradle -p android :core:test :app:assembleRelease \
-            -PversionName="$VERSION" -PversionCode="$GITHUB_RUN_NUMBER" --no-daemon
+            -PversionName="$VERSION" -PversionCode="$CODE" --no-daemon
 
       - name: Publish release
         if: steps.tag.outputs.skip != 'true'
@@ -80,7 +83,7 @@ jobs:
           SIGNED: ${{ steps.signing.outputs.signed }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          APK="coach-chicken-${TAG}.apk"
+          APK="aura-farm-${TAG}.apk"
           cp android/app/build/outputs/apk/release/app-release.apk "$APK"
           {
             echo "A plank timer that watches you plank, clucks at you, and draws you as a gold skeleton."
@@ -88,7 +91,7 @@ jobs:
             echo "## Install"
             echo "1. On an Android phone (8.0 or newer, 64-bit ARM), download **$APK** below."
             echo "2. Open it and allow installing from your browser/file manager when asked."
-            echo "3. Open **Coach Chicken**, tap **Start session**, allow the camera, prop the phone side-on, and plank."
+            echo "3. Open **Aura Farm**, tap **Start session**, allow the camera, prop the phone side-on, and plank."
             echo
             echo "Pose detection runs entirely on the phone and the app does not send the camera feed anywhere. The APK is about 30 MB because it bundles the pose-detection model."
             if [ "$SIGNED" != "release" ]; then
@@ -96,4 +99,4 @@ jobs:
               echo "> **Note:** this build is signed with a debug key. If a later release was built by a different machine, Android may refuse to update over it; uninstall first in that case."
             fi
           } > notes.md
-          gh release create "$TAG" "$APK" --target "$GITHUB_SHA" --title "Coach Chicken $TAG" --notes-file notes.md
+          gh release create "$TAG" "$APK" --target "$GITHUB_SHA" --title "Aura Farm $TAG" --notes-file notes.md

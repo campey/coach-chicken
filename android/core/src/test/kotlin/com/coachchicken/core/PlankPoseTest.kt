@@ -2,6 +2,8 @@ package com.coachchicken.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PlankPoseTest {
@@ -252,5 +254,75 @@ class TiltedCameraTest {
         val lifted = tiltedAnkle.toMutableList().also { it[PoseIdx.R_HIP] = Landmark(0.270f, 0.50f, 0.52f) }
         val grade = gradePlank(lifted, aspect, target = target)
         assertTrue(grade != PlankGrade.PERFECT, "grade $grade")
+    }
+}
+
+/** The hands-and-knees cheat, and the knee plank that is still a plank. */
+class AllFoursTest {
+    /** Like [pose] with a knee (left side) as well. */
+    private fun poseWithKnee(
+        s: Pair<Float, Float>, e: Pair<Float, Float>, h: Pair<Float, Float>, k: Pair<Float, Float>, a: Pair<Float, Float>?,
+    ): List<Landmark> {
+        val l = MutableList(PoseIdx.COUNT) { Landmark(0f, 0f, 0f) }
+        l[11] = Landmark(s.first, s.second); l[13] = Landmark(e.first, e.second)
+        l[23] = Landmark(h.first, h.second); l[25] = Landmark(k.first, k.second)
+        if (a != null) l[27] = Landmark(a.first, a.second)
+        return l
+    }
+
+    // On all fours the thigh hangs straight down from the hip. Measured to the ankle (which trails behind on the floor)
+    // the hip angle still read about 130 degrees and the shoulder-to-ankle slope about 27, so it passed as a plank.
+    private val allFours = poseWithKnee(0.30f to 0.50f, 0.30f to 0.64f, 0.60f to 0.50f, 0.60f to 0.76f, 0.86f to 0.78f)
+
+    @Test fun allFoursIsNotAPlank() = assertEquals(PoseReading.NOT_PLANK, readPlank(allFours))
+
+    @Test fun allFoursWithoutTheAnkleIsNotAPlank() =
+        assertEquals(PoseReading.NOT_PLANK, readPlank(poseWithKnee(0.30f to 0.50f, 0.30f to 0.64f, 0.60f to 0.50f, 0.60f to 0.76f, null)))
+
+    @Test fun aKneePlankStillCounts() {
+        // knees down, shins lifted behind: the shoulder, hip and knee stay in one line
+        val kneePlank = poseWithKnee(0.25f to 0.50f, 0.25f to 0.62f, 0.50f to 0.56f, 0.68f to 0.62f, 0.78f to 0.52f)
+        assertEquals(PoseReading.PLANK, readPlank(kneePlank))
+        assertEquals(PoseReading.PLANK, readPlank(poseWithKnee(0.25f to 0.50f, 0.25f to 0.62f, 0.50f to 0.56f, 0.68f to 0.62f, null)))
+    }
+
+    @Test fun aFullPlankWithAKneeOnTheLineStillCounts() {
+        val full = poseWithKnee(0.25f to 0.50f, 0.25f to 0.62f, 0.50f to 0.54f, 0.65f to 0.56f, 0.80f to 0.58f)
+        assertEquals(PlankGrade.PERFECT, gradePlank(full))
+    }
+
+    @Test fun theKneeLineIsMeasuredAtTheHip() {
+        val m = assertNotNull(plankMetrics(allFours))
+        assertTrue(m.kneeLineDeg!! < 100, "thigh hangs down from the hip: ${m.kneeLineDeg}")
+        assertNull(plankMetrics(poseWithKnee(0.25f to 0.50f, 0.25f to 0.62f, 0.50f to 0.54f, 0.65f to 0.56f, 0.80f to 0.58f).toMutableList().also { it[25] = Landmark(0f, 0f, 0f) })!!.kneeLineDeg) // no knee seen: nothing to judge
+    }
+}
+
+/**
+ * Rows of a real 63 s front-camera run (app 0.5.17, before the knee check) in which the knees were on the floor for long
+ * stretches yet nearly every frame graded PERFECT. Columns: the pose log's, up to the right ankle. The straight-legged
+ * stretches (26-35 s, 46 s, 52 s) must stay perfect; the knees-down frames must not count.
+ */
+class KneesDownRunTest {
+    private class Row(val t: Long, val logged: String, val lms: List<Landmark>)
+
+    private val rows: List<Row> = javaClass.classLoader!!.getResource("knees_down_run.csv")!!.readText().lines().filter { it.isNotBlank() }.map { line ->
+        val f = line.split(',')
+        val v = f.drop(14).map { it.toFloat() }
+        val lms = MutableList(PoseIdx.COUNT) { Landmark(0f, 0f, 0f) }
+        // nose, lsho, rsho, lelb, relb, lwri, rwri, lhip, rhip, lkne, rkne, lank, rank
+        val ids = intArrayOf(PoseIdx.NOSE, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28)
+        ids.forEachIndexed { q, id -> lms[id] = Landmark(v[2 * q], v[2 * q + 1]) }
+        Row(f[0].toLong(), f[2], lms)
+    }
+
+    private fun grade(t: Long) = gradePlank(rows.first { it.t == t }.lms, 1.333f)
+
+    @Test fun theStraightLeggedStretchesStayPerfect() {
+        for (t in listOf(26753L, 33006L, 52790L, 46636L)) assertEquals(PlankGrade.PERFECT, grade(t), "t=$t")
+    }
+
+    @Test fun kneesOnTheFloorFramesDoNotCount() {
+        for (t in listOf(10259L, 11604L, 12664L, 42361L, 5727L)) assertEquals(PlankGrade.NOT_PLANK, grade(t), "t=$t")
     }
 }

@@ -1,6 +1,20 @@
 package com.coachchicken
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import com.coachchicken.core.Exercise
+import com.coachchicken.core.Exercises
+import com.coachchicken.core.PoseIdx
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Animatable
 import android.view.Surface
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -13,6 +27,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,6 +62,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -59,6 +78,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.coachchicken.core.Landmark
 import com.coachchicken.core.PlankGrade
+import com.coachchicken.core.PlankTolerances
+import com.coachchicken.core.plankMetrics
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.math.PI
@@ -99,45 +120,58 @@ fun SessionScreen(
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     KeepScreenOn(true)
-    Box(Modifier.fillMaxSize().background(if (onCam) Color.Black else MaterialTheme.colorScheme.background)) {
+    // A camera session switches the screen to landscape by itself: held upright, the whole screen turns sideways, which
+    // is the cue to turn the phone to match. It goes back to following the phone when the session closes.
+    val activity = LocalContext.current.findActivity()
+    DisposableEffect(onCam) {
+        if (onCam) activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+    }
+    // The start sequence: looking for you -> found -> the camera bounces away -> just the avatar in a field.
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(state.phase, onCam) {
+        if (onCam && state.phase == Phase.PLANKING) progress.animateTo(1f, tween(2400, easing = LinearEasing)) else progress.animateTo(0f, tween(450))
+    }
+    val clock = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(onCam) { while (onCam) withFrameNanos { clock.floatValue = it / 1e9f } } // read only while drawing, so no recomposition
+    val worldView = rememberWorldView(enabled = onCam && progress.value > 0.02f)
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().background(if (onCam) Color.Black else MaterialTheme.colorScheme.background)) {
+        // in landscape with the camera on, the frame takes the left of the screen at full height and the controls the rest
+        val frameW = minOf(maxWidth, maxHeight * (4f / 3f))
+        val panelW = maxWidth - frameW
+        val sidePanel = landscape && onCam && panelW >= 180.dp
         if (onCam) {
-            CameraLayer(state, onPose)
+            CameraLayer(state, onPose, progress.value, { worldView.value }, { clock.floatValue })
             state.pose?.let {
                 // Matches the log's t_ms, so a screen recording can be lined up with a pasted log.
                 Text(
-                    "t=%.1fs".format(it.logMs / 1000.0),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.align(Alignment.TopEnd).systemBarsPadding()
-                        .padding(top = if (landscape) 76.dp else 0.dp).padding(8.dp) // clear of the timer in landscape
-                        .background(Scrim, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
+                    "t=%.1fs  y%.0f p%.0f r%.0f".format(it.logMs / 1000.0, worldView.value.yaw, worldView.value.pitch, worldView.value.roll),
+                    color = Color.White.copy(alpha = 0.7f),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.align(Alignment.BottomStart).systemBarsPadding().padding(8.dp),
                 )
             }
         }
 
+        val planking = state.phase == Phase.PLANKING
         val primaryLabel = if (state.phase == Phase.READY) "Start plank" else if (reached) "Done" else "Stop"
         val primaryClick = if (state.phase == Phase.READY) onStartPlank else onEnd
-        val outlined = ButtonDefaults.outlinedButtonColors(containerColor = scrim, contentColor = fg)
+        val primaryStyle = if (state.phase == Phase.READY || reached) HudStyle.PRIMARY else HudStyle.STOP
+        val extras = buildList {
+            if (state.phase == Phase.READY) add("Close" to onClose)
+            if (onCam) add((if (state.frontCamera) "Rear cam" else "Front cam") to onFlip)
+            if (onCam && onCopyLog != null && !planking) add("Copy log" to onCopyLog)
+        }
         val extraButtons: @Composable RowScope.() -> Unit = {
-            if (state.phase == Phase.READY) {
-                OutlinedButton(onClose, Modifier.weight(1f), colors = outlined) { Text("Close") }
-            }
-            if (onCam) {
-                OutlinedButton(onFlip, Modifier.weight(1f), colors = outlined) { Text(if (state.frontCamera) "Rear cam" else "Front cam") }
-            }
-            if (onCam && onCopyLog != null) {
-                OutlinedButton(onCopyLog, Modifier.weight(1f), colors = outlined) { Text("Copy log") }
-            }
+            extras.forEach { (label, click) -> HudButton(label, click, Modifier.weight(1f)) }
         }
-        val timer: @Composable () -> Unit = {
-            Text(
-                if (reached) "+" + formatElapsed(state.elapsedMs - state.goalMs) else formatTime(state.goalMs - state.elapsedMs),
-                fontSize = if (landscape) 44.sp else 72.sp,
-                color = if (reached) Gold else fg,
-                modifier = Modifier.background(scrim, RoundedCornerShape(16.dp)).padding(horizontal = 20.dp),
-            )
-        }
+        val timerText = if (reached) "+" + formatElapsed(state.elapsedMs - state.goalMs) else formatTime(state.goalMs - state.elapsedMs)
+        val status = statusText(state, reached)
+        val hold = state.pose?.holdProgress ?: 0f
 
+        if (sidePanel) {
+            SideHud(planking, reached, status, hold, timerText, onStartPlank, onEnd, onFlip, onClose, onCopyLog, com.coachchicken.core.Exercises.all.map { it.name }, panelW)
+        } else
         Column(
             Modifier.fillMaxSize().systemBarsPadding().padding(16.dp),
             verticalArrangement = Arrangement.SpaceBetween,
@@ -147,35 +181,70 @@ fun SessionScreen(
                     Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 56.dp, height = 110.dp))
                 }
                 if (landscape) {
-                    // Planking on the floor puts the forearms and hands at the bottom of the picture, so in landscape
-                    // the controls go along the top, next to the timer, and the bottom stays clear.
+                    // the controls go along the top, next to the timer, and the bottom stays clear
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(primaryClick, Modifier.weight(2f)) { Text(primaryLabel) }
+                            HudButton(primaryLabel, primaryClick, Modifier.weight(2f), primaryStyle)
                             extraButtons()
                         }
-                        if (state.phase == Phase.PLANKING) timer()
+                        if (planking) HudTimer(timerText, reached)
                     }
-                } else if (state.phase == Phase.PLANKING) {
-                    timer()
+                } else if (planking) {
+                    HudTimer(timerText, reached)
                 }
-                Text(
-                    statusText(state, reached),
-                    color = fg,
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = 8.dp).background(scrim, RoundedCornerShape(12.dp)).padding(12.dp),
-                )
-                val progress = state.pose?.holdProgress ?: 0f
-                if (state.phase == Phase.READY && onCam && progress > 0f) {
-                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.padding(top = 8.dp).fillMaxWidth(0.6f))
+                HudTag(status, Modifier.padding(top = 10.dp))
+                if (state.phase == Phase.READY && onCam && hold > 0f) {
+                    LinearProgressIndicator(progress = { hold }, modifier = Modifier.padding(top = 8.dp).fillMaxWidth(0.6f))
                 }
             }
 
             if (!landscape) {
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(primaryClick, Modifier.fillMaxWidth()) { Text(primaryLabel) }
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HudButton(primaryLabel, primaryClick, Modifier.fillMaxWidth(), primaryStyle, height = 56.dp)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { extraButtons() }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The landscape camera HUD, laid out like a phone's camera app. Getting into position: a hint over the picture, and in the
+ * strip beside it the flip button, the red record button, close, and the mode strip. While planking: a red timer pill and
+ * a stop capsule, small and out of the way of the player.
+ */
+@Composable
+internal fun SideHud(
+    planking: Boolean, reached: Boolean, status: String, hold: Float, timerText: String,
+    onStart: () -> Unit, onStop: () -> Unit, onFlip: () -> Unit, onClose: () -> Unit, onCopyLog: (() -> Unit)?,
+    exerciseNames: List<String>, panelW: androidx.compose.ui.unit.Dp,
+) {
+    Box(Modifier.fillMaxSize().systemBarsPadding().padding(12.dp)) {
+        Column(Modifier.align(Alignment.TopCenter), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (planking) RecordPill(timerText, reached)
+            HintPill(status, Modifier.padding(top = if (planking) 8.dp else 0.dp).widthIn(max = 420.dp))
+            if (!planking && hold > 0f) {
+                LinearProgressIndicator(progress = { hold }, modifier = Modifier.padding(top = 8.dp).width(180.dp))
+            }
+        }
+        if (planking) {
+            StopCapsule(onStop, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 8.dp))
+        } else {
+            Row(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(panelW - 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    Modifier.weight(1f).fillMaxHeight().padding(start = 44.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CameraRoundButton(onClose, size = 52.dp) { CloseIcon() }
+                        GapW(10.dp)
+                        CameraRoundButton(onFlip, size = 52.dp) { FlipIcon() }
+                    }
+                    ShutterButton(onStart)
+                    Box(Modifier.padding(bottom = 8.dp).height(44.dp)) { if (onCopyLog != null) LogButton(onCopyLog) }
+                }
+                Column(Modifier.fillMaxHeight().padding(start = 4.dp, end = 4.dp), verticalArrangement = Arrangement.Center) {
+                    ModeStrip(exerciseNames, 0)
                 }
             }
         }
@@ -184,7 +253,9 @@ fun SessionScreen(
 
 /** Camera preview, skeleton overlay and the pose analyser; only exists while the camera is on. */
 @Composable
-private fun CameraLayer(state: UiState, onPose: (List<Landmark>?, Float) -> Unit) {
+private fun CameraLayer(
+    state: UiState, onPose: (List<Landmark>?, Float) -> Unit, progress: Float, view: () -> WorldView, nowSec: () -> Float,
+) {
     val context = LocalContext.current
     val latestOnPose = rememberUpdatedState(onPose)
     val analyzer = remember { PoseAnalyzer(context) { lm, aspect -> latestOnPose.value(lm, aspect) } }
@@ -196,24 +267,37 @@ private fun CameraLayer(state: UiState, onPose: (List<Landmark>?, Float) -> Unit
             analyzer.close()
         }
     }
-    CameraPreview(front = state.frontCamera, analyzer = analyzer, executor = executor, modifier = Modifier.fillMaxSize())
-    PoseOverlay(state.pose, mirror = state.frontCamera, modifier = Modifier.fillMaxSize())
+    // the target ghost shows until a plank is found, then fades away
+    val inPosition = state.pose?.grade.let { it == PlankGrade.OK || it == PlankGrade.PERFECT }
+    // ...and the finding-you overlay (dim layer, dashed frame, crosshair) clears the moment a body is seen
+    val bodyFound = state.pose?.grade.let { it != null && it != PlankGrade.NO_BODY }
+    val ghostTarget = if (state.phase != Phase.READY || inPosition) 0f else if (bodyFound) 0.55f else 1f
+    val ghost by androidx.compose.animation.core.animateFloatAsState(ghostTarget, tween(450), label = "ghost")
+    val findingAlpha by androidx.compose.animation.core.animateFloatAsState(if (bodyFound) 0f else 1f, tween(350), label = "finding")
+    StartSequenceLayers(
+        progress, view, nowSec, Modifier.fillMaxSize(), positionAlpha = findingAlpha,
+        camera = { m -> CameraPreview(front = state.frontCamera, analyzer = analyzer, executor = executor, modifier = m) },
+        pose = { avatar -> PoseOverlay(state.pose, mirror = state.frontCamera, modifier = Modifier.fillMaxSize(), avatar = avatar, view = view, templateAlpha = ghost) },
+    )
 }
 
 private fun statusText(state: UiState, reached: Boolean): String = when {
     state.phase == Phase.PLANKING && reached ->
-        if (state.cameraOn) "Goal reached! Keep going, then get up or tap Done." else "Goal reached! Keep going, then tap Done."
+        if (state.cameraOn) "Goal reached! Keep going, then get up or tap the stop button." else "Goal reached! Keep going, then tap Done."
     state.phase == Phase.PLANKING && state.pose?.endsInMs != null ->
         "Back into plank! Ending in ${(state.pose.endsInMs + 999) / 1000}s"
     state.phase == Phase.PLANKING && state.pose?.hipInZone == false ->
         "Planking. Aim your hips for the green zone."
     state.phase == Phase.PLANKING ->
-        if (state.cameraOn) "Planking. Get up or tap Stop to end early." else "Planking. Tap Stop to end early."
+        if (state.cameraOn) "Planking. Get up or tap the stop button to end early." else "Planking. Tap Stop to end early."
     !state.cameraOn -> "Get into position, then tap Start plank."
     state.pose == null || state.pose.grade == PlankGrade.NO_BODY ->
-        "Prop the phone so the camera sees you side-on, then plank (or tap Start plank)."
+        "Prop the phone so the camera sees you side-on, then plank (or tap the red button)."
     state.pose.headOutOfFrame ->
-        "Your head is out of frame. Move the phone further back, or turn it to landscape."
+        "Your head is out of frame. Move the phone further back."
+    state.pose.feetOutOfFrame && state.phase == Phase.READY ->
+        if (state.pose.aspect < 1f) "Your feet are out of frame. In portrait the phone needs to be about 2 m away, or turn it sideways."
+        else "Your feet are out of frame. Move the phone further back."
     state.pose.grade == PlankGrade.NOT_PLANK -> "Get into plank position."
     else -> "Hold it... then keep your hips in the green."
 }
@@ -226,9 +310,24 @@ private fun CameraPreview(front: Boolean, analyzer: ImageAnalysis.Analyzer, exec
     // The activity handles rotation itself (so the session survives it); re-bind with the new display rotation so
     // the preview and the analysed frames stay upright.
     val configuration = LocalConfiguration.current
-    val rotation = remember(configuration) { view.display?.rotation ?: Surface.ROTATION_0 }
+    // Flipping between the two landscapes (or back) does not change the configuration, so watch the display itself
+    var rotation by remember { mutableIntStateOf(view.display?.rotation ?: Surface.ROTATION_0) }
+    DisposableEffect(configuration) {
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager
+        val l = object : android.hardware.display.DisplayManager.DisplayListener {
+            override fun onDisplayAdded(id: Int) = Unit
+            override fun onDisplayRemoved(id: Int) = Unit
+            override fun onDisplayChanged(id: Int) { rotation = view.display?.rotation ?: rotation }
+        }
+        rotation = view.display?.rotation ?: rotation
+        dm.registerDisplayListener(l, null)
+        onDispose { dm.unregisterDisplayListener(l) }
+    }
     val previewView = remember {
-        PreviewView(context).apply { scaleType = PreviewView.ScaleType.FIT_CENTER }
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FIT_START // the whole frame, pinned to the left (top): the rest of the screen is for the controls
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE // a texture view, so it can scale and fade
+        }
     }
     DisposableEffect(front, rotation) {
         val future = ProcessCameraProvider.getInstance(context)
@@ -249,6 +348,7 @@ private fun CameraPreview(front: Boolean, analyzer: ImageAnalysis.Analyzer, exec
             val camera = if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
             provider.unbindAll()
             provider.bindToLifecycle(lifecycleOwner, camera, preview, analysis)
+            SessionDebug.sink?.invoke("CAMERA_BOUND display_rot=$rotation front=$front")
         }, ContextCompat.getMainExecutor(context))
         onDispose { runCatching { future.get().unbindAll() } }
     }
@@ -300,20 +400,69 @@ private fun DrawScope.drawSparkles(bones: List<Pair<Offset, Offset>>, aura: Floa
  * hip turns green while it is inside the zone.
  */
 @Composable
-private fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier) {
+internal fun PoseOverlay(
+    pose: PoseUi?, mirror: Boolean, modifier: Modifier, avatar: Float = 0f, view: () -> WorldView = { WorldView() },
+    /** The exercise whose ghost template is drawn as the target to get into, faded in by [templateAlpha] (0..1). */
+    exercise: Exercise = Exercises.PLANK, templateAlpha: Float = 0f,
+) {
     val sparkling = (pose?.aura ?: 0f) > 0.12f
     var clockMs by remember { mutableLongStateOf(0L) }
     LaunchedEffect(sparkling) {
         while (sparkling) withFrameNanos { clockMs = it / 1_000_000 } // only animates while there is something to animate
     }
+    // which way the player faces, as it appears on screen: the ghost turns to match once a body has been seen
+    val facingRight = remember { booleanArrayOf(false) }
     Canvas(modifier) {
-        if (pose == null) return@Canvas
+        val aspect = pose?.aspect ?: (4f / 3f)
         val viewAspect = size.width / size.height
-        val (w, h) = if (viewAspect > pose.aspect) (size.height * pose.aspect) to size.height
-        else size.width to (size.width / pose.aspect)
-        val ox = (size.width - w) / 2
-        val oy = (size.height - h) / 2
-        drawPoseScene(pose, clockMs, heightPx = h) { x, y -> Offset(ox + (if (mirror) 1 - x else x) * w, oy + y * h) }
+        // the whole camera frame, like the live preview; the avatar lives inside this same frame, so the corner marks
+        // keep meaning something once the camera has gone
+        val w = if (viewAspect > aspect) size.height * aspect else size.width
+        val h = if (viewAspect > aspect) size.height else size.width / aspect
+        // pinned left while the camera shows; once the scene is up the frame (and the player in it) glides to the centre
+        val ox = (size.width - w) / 2 * avatar.coerceIn(0f, 1f)
+        val oy = 0f
+        fun at(x: Float, y: Float) = Offset(ox + (if (mirror) 1 - x else x) * w, oy + y * h)
+        drawCaptureMarks(ox, oy, w, h, 1f)
+        if (pose != null && pose.grade != PlankGrade.NO_BODY && pose.landmarks.size >= PoseIdx.COUNT) {
+            val nose = pose.landmarks[PoseIdx.NOSE]; val hip = pose.landmarks[PoseIdx.L_HIP]
+            if (nose.visibility > 0.3f && hip.visibility > 0.3f) {
+                val nx = if (mirror) 1 - nose.x else nose.x; val hx = if (mirror) 1 - hip.x else hip.x
+                facingRight[0] = nx > hx
+            }
+        }
+        if (templateAlpha > 0.01f && avatar < 0.01f) drawTemplate(exercise, facingRight[0], ox, oy, w, h, templateAlpha * (0.85f + 0.3f * (0.5f + 0.5f * sin(clockMs / 700.0).toFloat())))
+        if (pose == null) return@Canvas
+        // once it is an avatar it lives in the field: it turns with the phone like the scene does, and stands on the grass
+        val v = view()
+        val pxDegX = size.width / (if (size.width > size.height) 80f else 55f)
+        val pxDegY = size.height / (if (size.width > size.height) 38f else 70f)
+        withTransform({
+            if (avatar > 0f) {
+                rotate(v.roll * avatar, Offset(size.width / 2, size.height / 2))
+                translate(-v.yaw * pxDegX * avatar, v.pitch * pxDegY * avatar)
+            }
+        }) {
+            if (avatar > 0f) drawGroundShadow(pose, avatar, ::at)
+            drawPoseScene(pose, clockMs, heightPx = h) { x, y -> at(x, y) }
+        }
+    }
+}
+
+/** A soft shadow under the body and darker spots under the hands, knees and feet, so it reads as lying on the grass. */
+internal fun DrawScope.drawGroundShadow(pose: PoseUi, avatar: Float, at: (Float, Float) -> Offset) {
+    val lms = pose.landmarks
+    if (lms.size < PoseIdx.COUNT) return
+    fun p(i: Int): Offset? = lms[i].takeIf { it.visibility >= 0.3f }?.let { at(it.x, it.y) }
+    val touching = listOf(13, 14, 15, 16, 25, 26, 27, 28).mapNotNull(::p)
+    val all = listOf(0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28).mapNotNull(::p)
+    if (touching.isEmpty() || all.isEmpty()) return
+    val ground = touching.maxOf { it.y } + 7.dp.toPx()
+    val cx = (all.minOf { it.x } + all.maxOf { it.x }) / 2
+    val half = (all.maxOf { it.x } - all.minOf { it.x }) / 2 + 14.dp.toPx()
+    drawOval(Color(0xFF0A1A08).copy(alpha = 0.32f * avatar), Offset(cx + 10.dp.toPx() - half, ground - 9.dp.toPx()), Size(2 * half, 20.dp.toPx()))
+    listOf(15, 16, 27, 28).mapNotNull(::p).forEach {
+        drawOval(Color(0xFF0A1A08).copy(alpha = 0.55f * avatar), Offset(it.x - 17.dp.toPx(), ground - 6.5.dp.toPx()), Size(34.dp.toPx(), 13.dp.toPx()))
     }
 }
 
@@ -390,8 +539,71 @@ internal fun DrawScope.drawPoseScene(
 
         val palette = BonePalette(ink = Ink, fill = base, shine = Color.White)
         drawBoneSkeleton(lms, { at(it) }, pose.judgedSide, palette, yaw, pitch)
+        drawFormDots(pose) { at(it) }
         if (pose.hipInZone == true) {
             val judgedHip = if (pose.judgedSide == 'L') 23 else 24
             if (visible(judgedHip)) drawCircle(Green, 9.dp.toPx(), at(lms[judgedHip]))
         }
+}
+
+private val TemplateBlue = Color(0xFF00B4FF)
+private val FrameGreen = Color(0xFF5FD078)
+
+/**
+ * The ghost of [exercise]: a semi-transparent electric blue skeleton where the player is expected to be. It is drawn into
+ * one layer so the bones do not show through each other, then faded to about a fifth of full strength.
+ */
+private fun DrawScope.drawTemplate(exercise: Exercise, facingRight: Boolean, ox: Float, oy: Float, w: Float, h: Float, strength: Float) {
+    val lms = MutableList(PoseIdx.COUNT) { Landmark(0f, 0f, 0f) }
+    exercise.template.forEach { (i, xy) -> lms[i] = Landmark(if (facingRight) 1f - xy.first else xy.first, xy.second, 1f) }
+    drawIntoCanvas { canvas ->
+        val paint = androidx.compose.ui.graphics.Paint().apply { alpha = (0.2f * strength).coerceIn(0f, 1f) }
+        canvas.saveLayer(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height), paint)
+        drawBoneSkeleton(lms, { Offset(ox + it.x * w, oy + it.y * h) }, 'L', BonePalette(ink = Color(0xFFD6F4FF), fill = TemplateBlue, shine = Color.White), 0f, 0f)
+        canvas.restore()
+    }
+}
+
+private val InLine = Color(0xFF5FD078)
+private val NearLine = Color(0xFFFFB300)
+private val OffLine = Color(0xFFFF6E40)
+
+/**
+ * The three form dots, shoulder, hip and knee on the side being judged, joined by a line: green while the thigh carries
+ * straight on from the torso (a plank, or a knee plank), amber as it starts to bend, orange when it is bent as on all fours.
+ */
+private fun DrawScope.drawFormDots(pose: PoseUi, at: (Landmark) -> Offset) {
+    val lms = pose.landmarks
+    if (lms.size < PoseIdx.COUNT || pose.grade == PlankGrade.NO_BODY) return
+    val m = plankMetrics(lms, pose.aspect) ?: return
+    val line = m.kneeLineDeg ?: return
+    val ids = if (m.side == 'L') intArrayOf(PoseIdx.L_SHOULDER, PoseIdx.L_HIP, PoseIdx.L_KNEE) else intArrayOf(PoseIdx.R_SHOULDER, PoseIdx.R_HIP, PoseIdx.R_KNEE)
+    if (ids.any { lms[it].visibility < 0.3f }) return
+    val tol = PlankTolerances()
+    val color = if (line >= tol.perfectKneeLineDeg) InLine else if (line >= tol.okKneeLineDeg) NearLine else OffLine
+    val pts = ids.map { at(lms[it]) }
+    drawLine(color.copy(alpha = 0.85f), pts[0], pts[1], 2.5.dp.toPx(), StrokeCap.Round)
+    drawLine(color.copy(alpha = 0.85f), pts[1], pts[2], 2.5.dp.toPx(), StrokeCap.Round)
+    pts.forEach {
+        drawCircle(Color.White, 6.5.dp.toPx(), it)
+        drawCircle(color, 4.5.dp.toPx(), it)
+    }
+}
+
+/** Small green corner marks on the edge of the camera frame, so it is clear where the motion capture works. */
+private fun DrawScope.drawCaptureMarks(left: Float, top: Float, width: Float, height: Float, alpha: Float) {
+    if (alpha <= 0.01f) return
+    val c = FrameGreen.copy(alpha = 0.9f * alpha)
+    val arm = 24.dp.toPx(); val sw = 3.dp.toPx(); val inset = 4.dp.toPx()
+    val l = left + inset; val t = top + inset; val r = left + width - inset; val b = top + height - inset
+    for ((x, y, dx, dy) in listOf(listOf(l, t, 1f, 1f), listOf(r, t, -1f, 1f), listOf(l, b, 1f, -1f), listOf(r, b, -1f, -1f))) {
+        drawLine(c, Offset(x, y), Offset(x + dx * arm, y), sw, StrokeCap.Round)
+        drawLine(c, Offset(x, y), Offset(x, y + dy * arm), sw, StrokeCap.Round)
+    }
+}
+
+internal tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

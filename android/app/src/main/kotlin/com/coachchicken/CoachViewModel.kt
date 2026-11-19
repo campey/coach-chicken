@@ -18,6 +18,7 @@ import com.coachchicken.core.PlankTarget
 import com.coachchicken.core.PlankTimeline
 import com.coachchicken.core.PlankTracker
 import com.coachchicken.core.PoseLog
+import com.coachchicken.core.Scene
 import com.coachchicken.core.PoseReading
 import com.coachchicken.core.SessionRecord
 import com.coachchicken.core.buildCalendar
@@ -66,6 +67,8 @@ data class PoseUi(
     val hipInZone: Boolean? = null,
     /** The head is off the edge of the image: the phone is too close. */
     val headOutOfFrame: Boolean = false,
+    /** The ankles are not in the shot (the knees or only the hips were usable): the phone is too close for the person's length. */
+    val feetOutOfFrame: Boolean = false,
 )
 
 /** Everything one summary card needs: the logged session, and its replay if one was recorded. */
@@ -113,6 +116,9 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
     private var startedAt: Instant = Instant.now()
     private var startedRealtime = 0L
 
+    /** The sessions on disk changed under us (a restored backup): refresh the calendar and the streak. */
+    fun reloadHome() = _state.update { it.copy(calendar = loadCalendar(), streak = loadStreak()) }
+
     private fun loadStreak(): Streak {
         val zone = ZoneId.systemDefault()
         return currentStreak(completedSessionTimes(store.readAll(), zone).keys, LocalDate.now(zone))
@@ -124,6 +130,8 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun cameraMs() = SystemClock.elapsedRealtime() - cameraStartedAt
+
+    init { SessionDebug.sink = { poseLog.addEvent(cameraMs(), it) } } // what the phone's sensors and screen say, into the pose log
 
     /** Everything the camera saw in the latest session, ready to paste. */
     fun poseLogText(): String = poseLog.render()
@@ -216,7 +224,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
             PlankRecording(
                 startedAt = startedAt, aspect = lastAspect, mirror = _state.value.frontCamera, goalMs = timeline.durationMs,
                 durationMs = elapsed, completed = completed, frames = recorder.framesFor(plankStartCameraMs, cameraMs()),
-                target = plankTarget,
+                target = plankTarget, scene = Scene.FARM, // the only location so far
             )
         } else null
         if (recording != null) runCatching { plankStore.save(recording) } // a failed save must not lose the session
@@ -320,6 +328,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
                             target = target,
                             hipInZone = if (target != null && hip != null) target!!.contains(hip, aspect) else null,
                             headOutOfFrame = landmarks != null && grade != PlankGrade.NO_BODY && headOutOfFrame(landmarks),
+                            feetOutOfFrame = landmarks != null && grade != PlankGrade.NO_BODY && plankMetrics(landmarks, aspect)?.lower.let { it != null && it != 'A' },
                         ),
                     )
                 }
@@ -328,6 +337,7 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        SessionDebug.sink = null
         sounds.release()
     }
 

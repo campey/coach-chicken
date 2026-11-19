@@ -1,4 +1,6 @@
-# coach-chicken
+# Aura Farm
+
+(Formerly Coach Chicken. The rubber chicken is still the coach.)
  
 A rep counter to make exercises more fun.
 
