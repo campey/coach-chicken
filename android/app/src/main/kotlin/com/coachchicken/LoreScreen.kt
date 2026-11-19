@@ -54,7 +54,7 @@ fun LoreScreen(onClose: () -> Unit) {
             Text("Yes. A rubber one.", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
             Text(
                 buildAnnotatedString {
-                    append("Coach Chicken is inspired by the rubber chicken with a pulley in the middle, first seen in ")
+                    append("Coach Chicken, your coach in Aura Farm, is inspired by the rubber chicken with a pulley in the middle, first seen in ")
                     withLink(LinkAnnotation.Url(MONKEY_ISLAND_URL, TextLinkStyles(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline)))) {
                         append("The Secret of Monkey Island")
                     }

@@ -21,7 +21,7 @@ object Backup {
     fun write(contents: BackupContents, appVersion: String, out: OutputStream) {
         ZipOutputStream(out).use { zip ->
             fun put(name: String, text: String) { zip.putNextEntry(ZipEntry(name)); zip.write(text.toByteArray()); zip.closeEntry() }
-            put("about.txt", "Coach Chicken backup, app $appVersion.\nRestore it from the app's menu; it merges, it never removes what is already there.\n")
+            put("about.txt", "Aura Farm backup, app $appVersion.\nRestore it from the app's menu; it merges, it never removes what is already there.\n")
             put(SESSIONS, contents.sessionsCsv)
             contents.planks.forEach { (name, text) -> if (plankName.matches(name)) put(PLANKS_DIR + name, text) }
         }

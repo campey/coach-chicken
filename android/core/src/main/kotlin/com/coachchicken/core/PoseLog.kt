@@ -45,7 +45,7 @@ class PoseLog(
     }
 
     fun render(): String = buildString {
-        append("# Coach Chicken pose log. Rows: ").append(HEADER).append('\n')
+        append("# Aura Farm pose log. Rows: ").append(HEADER).append('\n')
         append("# Landmarks are normalised image coords (x right, y down), joints: ").append(NAMES.joinToString(" ")).append('\n')
         if (meta.isNotEmpty()) append("# ").append(meta).append('\n')
         append(HEADER).append('\n')

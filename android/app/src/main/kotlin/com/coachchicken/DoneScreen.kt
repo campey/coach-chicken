@@ -101,7 +101,7 @@ private suspend fun shareCard(context: Context, bitmap: Bitmap, card: CardData) 
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "image/png"
         putExtra(Intent.EXTRA_STREAM, uri)
-        putExtra(Intent.EXTRA_TEXT, "Plank %d:%02d 🥚 Coach Chicken".format(seconds / 60, seconds % 60))
+        putExtra(Intent.EXTRA_TEXT, "Plank %d:%02d 🥚 Aura Farm".format(seconds / 60, seconds % 60))
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
     context.startActivity(Intent.createChooser(send, null))

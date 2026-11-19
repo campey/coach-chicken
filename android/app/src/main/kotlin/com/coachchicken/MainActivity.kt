@@ -126,7 +126,7 @@ class MainActivity : ComponentActivity() {
                         if (uri != null) {
                             val result = runCatching { BackupManager(context).restore(uri) }
                             val message = result.fold(
-                                { r -> if (r == null) "That file is not a Coach Chicken backup" else "Restored ${r.sessionsAdded} planks (${r.replaysAdded} replays)" },
+                                { r -> if (r == null) "That file is not an Aura Farm backup" else "Restored ${r.sessionsAdded} planks (${r.replaysAdded} replays)" },
                                 { "The restore failed: ${it.message}" },
                             )
                             vm.reloadHome()
@@ -137,7 +137,7 @@ class MainActivity : ComponentActivity() {
                     val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                         reminderSettings.enabled = granted
                         Reminders.schedule(context)
-                        if (!granted) Toast.makeText(context, "Notifications are off for Coach Chicken in the phone's settings", Toast.LENGTH_LONG).show()
+                        if (!granted) Toast.makeText(context, "Notifications are off for Aura Farm in the phone's settings", Toast.LENGTH_LONG).show()
                     }
                     val uriHandler = LocalUriHandler.current
                     val day = state.day
@@ -175,7 +175,7 @@ class MainActivity : ComponentActivity() {
                             state, onStartSession, copyLog,
                             onLore = { lore = true },
                             onReminders = { showReminders = true },
-                            onBackup = { exportBackup.launch("coach-chicken-backup-${LocalDate.now()}.zip") },
+                            onBackup = { exportBackup.launch("aura-farm-backup-${LocalDate.now()}.zip") },
                             onRestore = { restoreBackup.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) },
                             onIssues = { uriHandler.openUri(ISSUES_URL) },
                         ) { vm.openDay(it.date) }
@@ -211,7 +211,7 @@ internal fun HomeScreen(
         var menuOpen by remember { mutableStateOf(false) }
         Box(Modifier.fillMaxWidth()) {
             Text(
-                "COACH CHICKEN", Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                "AURA FARM", Modifier.fillMaxWidth().padding(vertical = 18.dp),
                 fontSize = 22.sp, fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic, letterSpacing = 2.sp,
                 color = Color.White, textAlign = TextAlign.Center,
             )

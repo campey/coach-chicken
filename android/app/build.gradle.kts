@@ -14,7 +14,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.coachchicken"
+        applicationId = "com.aurafarm"
         minSdk = 26
         targetSdk = 35
         // CI passes these from the git tag (-PversionName=0.3.0 -PversionCode=<run number>)
