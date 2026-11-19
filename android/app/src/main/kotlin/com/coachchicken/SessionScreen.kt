@@ -71,6 +71,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.coachchicken.core.Landmark
 import com.coachchicken.core.PlankGrade
+import com.coachchicken.core.PlankTolerances
+import com.coachchicken.core.plankMetrics
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.math.PI
@@ -365,6 +367,7 @@ internal fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier, ava
         val ox = (size.width - w) / 2
         val oy = (size.height - h) / 2
         fun at(x: Float, y: Float) = Offset(ox + (if (mirror) 1 - x else x) * w, oy + y * h)
+        drawCaptureMarks(ox, oy, w, h, avatar)
         // once it is an avatar it lives in the field: it turns with the phone like the scene does, and stands on the grass
         val v = view()
         val pxDegX = size.width / (if (size.width > size.height) 80f else 55f)
@@ -471,10 +474,49 @@ internal fun DrawScope.drawPoseScene(
 
         val palette = BonePalette(ink = Ink, fill = base, shine = Color.White)
         drawBoneSkeleton(lms, { at(it) }, pose.judgedSide, palette, yaw, pitch)
+        drawFormDots(pose) { at(it) }
         if (pose.hipInZone == true) {
             val judgedHip = if (pose.judgedSide == 'L') 23 else 24
             if (visible(judgedHip)) drawCircle(Green, 9.dp.toPx(), at(lms[judgedHip]))
         }
+}
+
+private val InLine = Color(0xFF5FD078)
+private val NearLine = Color(0xFFFFB300)
+private val OffLine = Color(0xFFFF6E40)
+
+/**
+ * The three form dots, shoulder, hip and knee on the side being judged, joined by a line: green while the thigh carries
+ * straight on from the torso (a plank, or a knee plank), amber as it starts to bend, orange when it is bent as on all fours.
+ */
+private fun DrawScope.drawFormDots(pose: PoseUi, at: (Landmark) -> Offset) {
+    val lms = pose.landmarks
+    if (lms.size < PoseIdx.COUNT || pose.grade == PlankGrade.NO_BODY) return
+    val m = plankMetrics(lms, pose.aspect) ?: return
+    val line = m.kneeLineDeg ?: return
+    val ids = if (m.side == 'L') intArrayOf(PoseIdx.L_SHOULDER, PoseIdx.L_HIP, PoseIdx.L_KNEE) else intArrayOf(PoseIdx.R_SHOULDER, PoseIdx.R_HIP, PoseIdx.R_KNEE)
+    if (ids.any { lms[it].visibility < 0.3f }) return
+    val tol = PlankTolerances()
+    val color = if (line >= tol.perfectKneeLineDeg) InLine else if (line >= tol.okKneeLineDeg) NearLine else OffLine
+    val pts = ids.map { at(lms[it]) }
+    drawLine(color.copy(alpha = 0.85f), pts[0], pts[1], 2.5.dp.toPx(), StrokeCap.Round)
+    drawLine(color.copy(alpha = 0.85f), pts[1], pts[2], 2.5.dp.toPx(), StrokeCap.Round)
+    pts.forEach {
+        drawCircle(Color.White, 6.5.dp.toPx(), it)
+        drawCircle(color, 4.5.dp.toPx(), it)
+    }
+}
+
+/** Small corner marks around the area the camera sees, so it is clear where the motion capture works. */
+private fun DrawScope.drawCaptureMarks(left: Float, top: Float, width: Float, height: Float, alpha: Float) {
+    if (alpha <= 0.01f) return
+    val c = Color.White.copy(alpha = 0.55f * alpha)
+    val arm = 22.dp.toPx(); val sw = 2.5.dp.toPx(); val inset = 6.dp.toPx()
+    val l = left + inset; val t = top + inset; val r = left + width - inset; val b = top + height - inset
+    for ((x, y, dx, dy) in listOf(listOf(l, t, 1f, 1f), listOf(r, t, -1f, 1f), listOf(l, b, 1f, -1f), listOf(r, b, -1f, -1f))) {
+        drawLine(c, Offset(x, y), Offset(x + dx * arm, y), sw, StrokeCap.Round)
+        drawLine(c, Offset(x, y), Offset(x, y + dy * arm), sw, StrokeCap.Round)
+    }
 }
 
 internal tailrec fun Context.findActivity(): Activity? = when (this) {

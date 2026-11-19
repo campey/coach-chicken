@@ -39,8 +39,8 @@ class PoseLog(
             val l = landmarks?.getOrNull(i)
             if (l == null) "," else "${f(l.x.toDouble(), 3)},${f(l.y.toDouble(), 3)}"
         }
-        val metrics = if (m == null) ",,,,,,"
-        else "${m.side},${m.lower},${f(m.bodyAngleDeg, 1)},${f(m.hipAngleDeg, 1)},${f(m.elbowDropRatio, 2)},${f(m.elbowOffsetRatio, 2)},${f(m.minVisibility.toDouble(), 2)}"
+        val metrics = if (m == null) ",,,,,,,"
+        else "${m.side},${m.lower},${f(m.bodyAngleDeg, 1)},${f(m.hipAngleDeg, 1)},${m.kneeLineDeg?.let { f(it, 1) } ?: ""},${f(m.elbowDropRatio, 2)},${f(m.elbowOffsetRatio, 2)},${f(m.minVisibility.toDouble(), 2)}"
         push("$tMs,$phase,$grade,${f(smoothed.toDouble(), 2)},${f(aura.toDouble(), 2)},${targetOffset?.let { f(it.toDouble(), 2) } ?: ""},${f(aspect.toDouble(), 3)},$metrics,$joints")
     }
 
@@ -68,7 +68,7 @@ class PoseLog(
             "nose", "lsho", "rsho", "lelb", "relb", "lwri", "rwri", "lhip", "rhip", "lkne", "rkne", "lank", "rank",
             "leye", "reye", "lear", "rear", "lmou", "rmou",
         )
-        private val HEADER = "t_ms,phase,grade,plank_s,aura,tgt_off,aspect,side,lower,body_deg,hip_deg,elbow_drop,elbow_off,min_vis," +
+        private val HEADER = "t_ms,phase,grade,plank_s,aura,tgt_off,aspect,side,lower,body_deg,hip_deg,knee_deg,elbow_drop,elbow_off,min_vis," +
             NAMES.joinToString(",") { "${it}_x,${it}_y" }
     }
 }

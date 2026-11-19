@@ -97,6 +97,26 @@ class StartSequenceScreenshotTest {
         return PoseUi(lms, rec.aspect, com.coachchicken.core.PlankGrade.PERFECT, 1f, aura = 0.8f, streak = 0.5f, judgedSide = rec.target?.side, target = rec.target)
     }
 
+    private fun fromPoints(vararg pts: Pair<Int, Pair<Float, Float>>): PoseUi {
+        val lms = MutableList(33) { com.coachchicken.core.Landmark(0f, 0f, 0f) }
+        pts.forEach { (i, xy) -> lms[i] = com.coachchicken.core.Landmark(xy.first, xy.second, 1f) }
+        return PoseUi(lms, 1.3333f, com.coachchicken.core.PlankGrade.OK, 1f, aura = 0f, streak = 0f)
+    }
+
+    /** The three form dots on a full plank, a knee plank and all fours (right side), with the capture corner marks. */
+    @Test fun formDots() {
+        val plank = fromPoints(12 to (0.25f to 0.50f), 14 to (0.25f to 0.62f), 24 to (0.50f to 0.54f), 26 to (0.65f to 0.56f), 28 to (0.80f to 0.58f))
+        val knee = fromPoints(12 to (0.25f to 0.50f), 14 to (0.25f to 0.62f), 24 to (0.50f to 0.56f), 26 to (0.68f to 0.62f), 28 to (0.78f to 0.52f))
+        val fours = fromPoints(12 to (0.30f to 0.50f), 14 to (0.30f to 0.64f), 24 to (0.60f to 0.50f), 26 to (0.60f to 0.76f), 28 to (0.86f to 0.78f))
+        for ((name, pz) in listOf("plank" to plank, "knee" to knee, "fours" to fours)) {
+            paparazzi.snapshot(name = name) {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF3A6B30))) {
+                    PoseOverlay(pz, mirror = false, modifier = Modifier.fillMaxSize(), avatar = 1f)
+                }
+            }
+        }
+    }
+
     @Test fun sequence() {
         val p = pose()
         for (progress in listOf(0f, 0.08f, 0.2f, 0.3f, 0.38f, 0.5f, 1f)) {

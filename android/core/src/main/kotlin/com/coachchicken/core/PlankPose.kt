@@ -49,6 +49,11 @@ data class PlankTolerances(
     val okHipDeg: Double = 130.0,
     val okElbowDrop: Double = 0.10,
     val okElbowOffset: Double = 0.9,
+    // The thigh must carry on from the torso: shoulder-hip-knee. On all fours the thigh hangs straight down (about 90),
+    // which the shoulder-hip-ankle angle hides because the shin trails out behind. A real plank run read 158-180 here,
+    // so these leave room for the same wobble; a knee plank is a straight line to the knee and passes.
+    val okKneeLineDeg: Double = 125.0,
+    val perfectKneeLineDeg: Double = 150.0,
     // PERFECT deliberately has no body-angle limit: that angle is measured against the camera's horizon, so a phone
     // propped at a slight tilt (one real run read a straight plank as 12-17 degrees) must not cost a perfect grade.
     // Perfect is about the shape of the body (straight hips, forearm propped) and staying in the green zone.
@@ -78,6 +83,11 @@ data class PlankMetrics(
     val elbowOffsetRatio: Double,
     /** Lowest visibility among the joints used. */
     val minVisibility: Float,
+    /**
+     * Angle at the hip between shoulder and knee, degrees (180 = the thigh carries straight on from the torso), or null
+     * when no knee can be seen. This is what separates a plank (or knee plank) from being on all fours.
+     */
+    val kneeLineDeg: Double? = null,
 )
 
 private fun Landmark.inFrame() = x in -0.02f..1.02f && y in -0.02f..1.02f
@@ -92,6 +102,8 @@ internal class PlankJoints(
     /** 'A' ankle, 'K' knee, 'H' hip only. */
     val lowerCode: Char,
     val lower: Landmark,
+    /** The knee, when it can be seen, whichever leg point the body line is measured to. */
+    val knee: Landmark? = null,
 )
 
 internal fun pickJoints(
@@ -114,9 +126,10 @@ internal fun pickJoints(
     fun usable(l: Landmark) =
         (l.visibility >= minVisibility && l.inFrame()) ||
             (l.visibility >= offFrameMinVisibility && l.within(offFrameMargin))
+    val seenKnee = knee.takeIf { usable(it) }
     return when {
-        usable(ankle) -> PlankJoints(useLeft, s, e, h, 'A', ankle)
-        usable(knee) -> PlankJoints(useLeft, s, e, h, 'K', knee)
+        usable(ankle) -> PlankJoints(useLeft, s, e, h, 'A', ankle, seenKnee)
+        seenKnee != null -> PlankJoints(useLeft, s, e, h, 'K', knee, seenKnee)
         else -> PlankJoints(useLeft, s, e, h, 'H', h)
     }
 }
@@ -140,6 +153,7 @@ fun plankMetrics(
     val torso = hypot((px(s) - px(h)).toDouble(), (s.y - h.y).toDouble())
     val bodyAngle = Math.toDegrees(atan2(abs(lowerPoint.y - s.y).toDouble(), abs(px(lowerPoint) - px(s)).toDouble()))
     val hipAngle = if (j.lowerCode == 'H') 180.0 else angleAt(px(h), h.y, px(s), s.y, px(lowerPoint), lowerPoint.y)
+    val kneeLine = j.knee?.let { angleAt(px(h), h.y, px(s), s.y, px(it), it.y) }
     return PlankMetrics(
         side = if (j.left) 'L' else 'R',
         lower = j.lowerCode,
@@ -148,6 +162,7 @@ fun plankMetrics(
         elbowDropRatio = if (torso < 1e-6) 0.0 else (e.y - s.y) / torso,
         elbowOffsetRatio = if (torso < 1e-6) Double.MAX_VALUE else abs(px(e) - px(s)) / torso,
         minVisibility = minOf(s.visibility, e.visibility, h.visibility, if (j.lowerCode == 'H') 1f else lowerPoint.visibility),
+        kneeLineDeg = kneeLine,
     )
 }
 
@@ -158,10 +173,12 @@ fun plankMetrics(
 fun gradeMetrics(m: PlankMetrics, tol: PlankTolerances = PlankTolerances(), targetOffset: Float? = null): PlankGrade {
     val ok = m.bodyAngleDeg <= tol.okBodyDeg &&
         m.hipAngleDeg >= tol.okHipDeg &&
+        (m.kneeLineDeg == null || m.kneeLineDeg >= tol.okKneeLineDeg) &&
         m.elbowDropRatio >= tol.okElbowDrop &&
         m.elbowOffsetRatio <= tol.okElbowOffset
     if (!ok) return PlankGrade.NOT_PLANK
     val perfect = m.hipAngleDeg >= tol.perfectHipDeg &&
+        (m.kneeLineDeg == null || m.kneeLineDeg >= tol.perfectKneeLineDeg) &&
         m.elbowDropRatio >= tol.perfectElbowDrop &&
         m.elbowOffsetRatio <= tol.perfectElbowOffset &&
         (targetOffset == null || targetOffset <= 1f)
