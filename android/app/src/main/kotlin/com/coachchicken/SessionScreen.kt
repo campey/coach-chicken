@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -145,59 +146,31 @@ fun SessionScreen(
                 // Matches the log's t_ms, so a screen recording can be lined up with a pasted log.
                 Text(
                     "t=%.1fs  y%.0f p%.0f r%.0f".format(it.logMs / 1000.0, worldView.value.yaw, worldView.value.pitch, worldView.value.roll),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.align(Alignment.TopEnd).systemBarsPadding()
-                        .padding(top = if (landscape) 76.dp else 0.dp).padding(8.dp) // clear of the timer in landscape
-                        .background(Scrim, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
+                    color = Color.White.copy(alpha = 0.7f),
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.align(Alignment.BottomStart).systemBarsPadding().padding(8.dp),
                 )
             }
         }
 
+        val planking = state.phase == Phase.PLANKING
         val primaryLabel = if (state.phase == Phase.READY) "Start plank" else if (reached) "Done" else "Stop"
         val primaryClick = if (state.phase == Phase.READY) onStartPlank else onEnd
-        val outlined = ButtonDefaults.outlinedButtonColors(containerColor = scrim, contentColor = fg)
+        val primaryStyle = if (state.phase == Phase.READY || reached) HudStyle.PRIMARY else HudStyle.STOP
         val extras = buildList {
             if (state.phase == Phase.READY) add("Close" to onClose)
             if (onCam) add((if (state.frontCamera) "Rear cam" else "Front cam") to onFlip)
-            if (onCam && onCopyLog != null) add("Copy log" to onCopyLog)
+            if (onCam && onCopyLog != null && !planking) add("Copy log" to onCopyLog)
         }
         val extraButtons: @Composable RowScope.() -> Unit = {
-            extras.forEach { (label, click) -> OutlinedButton(click, Modifier.weight(1f), colors = outlined) { Text(label) } }
+            extras.forEach { (label, click) -> HudButton(label, click, Modifier.weight(1f)) }
         }
-        val timer: @Composable () -> Unit = {
-            Text(
-                if (reached) "+" + formatElapsed(state.elapsedMs - state.goalMs) else formatTime(state.goalMs - state.elapsedMs),
-                fontSize = if (landscape) 44.sp else 72.sp,
-                color = if (reached) Gold else fg,
-                modifier = Modifier.background(scrim, RoundedCornerShape(16.dp)).padding(horizontal = 20.dp),
-            )
-        }
+        val timerText = if (reached) "+" + formatElapsed(state.elapsedMs - state.goalMs) else formatTime(state.goalMs - state.elapsedMs)
+        val status = statusText(state, reached)
+        val hold = state.pose?.holdProgress ?: 0f
 
         if (sidePanel) {
-            Box(Modifier.fillMaxSize().systemBarsPadding()) {
-                // the hint is overlaid on the viewfinder
-                Column(Modifier.width(frameW).padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        statusText(state, reached), color = fg, textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.background(scrim, RoundedCornerShape(12.dp)).padding(12.dp),
-                    )
-                    val hold = state.pose?.holdProgress ?: 0f
-                    if (state.phase == Phase.READY && hold > 0f) {
-                        LinearProgressIndicator(progress = { hold }, modifier = Modifier.padding(top = 8.dp).fillMaxWidth(0.6f))
-                    }
-                }
-                // the controls live in the free strip beside it
-                Column(
-                    Modifier.align(Alignment.CenterEnd).width(panelW).fillMaxHeight().padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    if (state.phase == Phase.PLANKING) timer()
-                    Button(primaryClick, Modifier.fillMaxWidth().height(56.dp)) { Text(primaryLabel) }
-                    extras.forEach { (label, click) -> OutlinedButton(click, Modifier.fillMaxWidth(), colors = outlined) { Text(label) } }
-                }
-            }
+            SideHud(planking, reached, status, hold, timerText, primaryLabel, primaryClick, primaryStyle, extras, panelW)
         } else
         Column(
             Modifier.fillMaxSize().systemBarsPadding().padding(16.dp),
@@ -208,36 +181,63 @@ fun SessionScreen(
                     Image(painterResource(R.drawable.ic_chicken), contentDescription = null, modifier = Modifier.size(width = 56.dp, height = 110.dp))
                 }
                 if (landscape) {
-                    // Planking on the floor puts the forearms and hands at the bottom of the picture, so in landscape
-                    // the controls go along the top, next to the timer, and the bottom stays clear.
+                    // the controls go along the top, next to the timer, and the bottom stays clear
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(primaryClick, Modifier.weight(2f)) { Text(primaryLabel) }
+                            HudButton(primaryLabel, primaryClick, Modifier.weight(2f), primaryStyle)
                             extraButtons()
                         }
-                        if (state.phase == Phase.PLANKING) timer()
+                        if (planking) HudTimer(timerText, reached)
                     }
-                } else if (state.phase == Phase.PLANKING) {
-                    timer()
+                } else if (planking) {
+                    HudTimer(timerText, reached)
                 }
-                Text(
-                    statusText(state, reached),
-                    color = fg,
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = 8.dp).background(scrim, RoundedCornerShape(12.dp)).padding(12.dp),
-                )
-                val progress = state.pose?.holdProgress ?: 0f
-                if (state.phase == Phase.READY && onCam && progress > 0f) {
-                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.padding(top = 8.dp).fillMaxWidth(0.6f))
+                HudTag(status, Modifier.padding(top = 10.dp))
+                if (state.phase == Phase.READY && onCam && hold > 0f) {
+                    LinearProgressIndicator(progress = { hold }, modifier = Modifier.padding(top = 8.dp).fillMaxWidth(0.6f))
                 }
             }
 
             if (!landscape) {
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(primaryClick, Modifier.fillMaxWidth()) { Text(primaryLabel) }
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HudButton(primaryLabel, primaryClick, Modifier.fillMaxWidth(), primaryStyle, height = 56.dp)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { extraButtons() }
                 }
+            }
+        }
+    }
+}
+
+/** The landscape camera HUD: the hint over the picture and, while planking, two small pieces in the corners; otherwise the controls in the free strip. */
+@Composable
+internal fun SideHud(
+    planking: Boolean, reached: Boolean, status: String, hold: Float, timerText: String,
+    primaryLabel: String, primaryClick: () -> Unit, primaryStyle: HudStyle, extras: List<Pair<String, () -> Unit>>, panelW: androidx.compose.ui.unit.Dp,
+) {
+    Box(Modifier.fillMaxSize().systemBarsPadding().padding(12.dp)) {
+        // the hint, over the picture
+        Column(Modifier.align(Alignment.TopCenter), horizontalAlignment = Alignment.CenterHorizontally) {
+            HudTag(status, Modifier.widthIn(max = 420.dp))
+            if (!planking && hold > 0f) {
+                LinearProgressIndicator(progress = { hold }, modifier = Modifier.padding(top = 8.dp).width(180.dp))
+            }
+        }
+        if (planking) {
+            // while planking the player takes the middle of the screen, so only two small pieces stay on it, stacked on the
+            // right edge at mid-height where they clear the frame's corner marks
+            Column(Modifier.align(Alignment.CenterEnd), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                HudTimer(timerText, reached)
+                HudButton(primaryLabel, primaryClick, Modifier.width(150.dp), primaryStyle)
+            }
+        } else {
+            // the controls live in the free strip beside the picture
+            Column(
+                Modifier.align(Alignment.CenterEnd).width(panelW - 24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                HudButton(primaryLabel, primaryClick, Modifier.fillMaxWidth(), primaryStyle, height = 60.dp)
+                extras.forEach { (label, click) -> HudButton(label, click, Modifier.fillMaxWidth()) }
             }
         }
     }
@@ -261,9 +261,13 @@ private fun CameraLayer(
     }
     // the target ghost shows until a plank is found, then fades away
     val inPosition = state.pose?.grade.let { it == PlankGrade.OK || it == PlankGrade.PERFECT }
-    val ghost by androidx.compose.animation.core.animateFloatAsState(if (state.phase == Phase.READY && !inPosition) 1f else 0f, tween(450), label = "ghost")
+    // ...and the finding-you overlay (dim layer, dashed frame, crosshair) clears the moment a body is seen
+    val bodyFound = state.pose?.grade.let { it != null && it != PlankGrade.NO_BODY }
+    val ghostTarget = if (state.phase != Phase.READY || inPosition) 0f else if (bodyFound) 0.55f else 1f
+    val ghost by androidx.compose.animation.core.animateFloatAsState(ghostTarget, tween(450), label = "ghost")
+    val findingAlpha by androidx.compose.animation.core.animateFloatAsState(if (bodyFound) 0f else 1f, tween(350), label = "finding")
     StartSequenceLayers(
-        progress, view, nowSec, Modifier.fillMaxSize(),
+        progress, view, nowSec, Modifier.fillMaxSize(), positionAlpha = findingAlpha,
         camera = { m -> CameraPreview(front = state.frontCamera, analyzer = analyzer, executor = executor, modifier = m) },
         pose = { avatar -> PoseOverlay(state.pose, mirror = state.frontCamera, modifier = Modifier.fillMaxSize(), avatar = avatar, view = view, templateAlpha = ghost) },
     )

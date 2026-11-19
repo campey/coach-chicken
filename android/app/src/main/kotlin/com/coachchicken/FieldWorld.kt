@@ -319,7 +319,7 @@ internal fun SceneWorld(scene: Scene, view: () -> WorldView, nowSec: () -> Float
  */
 @Composable
 internal fun StartSequenceLayers(
-    progress: Float, view: () -> WorldView, nowSec: () -> Float, modifier: Modifier = Modifier, scene: Scene = Scene.FARM,
+    progress: Float, view: () -> WorldView, nowSec: () -> Float, modifier: Modifier = Modifier, scene: Scene = Scene.FARM, positionAlpha: Float = 1f,
     camera: @Composable (Modifier) -> Unit, pose: @Composable (avatar: Float) -> Unit,
 ) {
     val s = StartStages(progress)
@@ -327,7 +327,7 @@ internal fun StartSequenceLayers(
         if (s.worldAlpha > 0f) SceneWorld(scene, view, nowSec, Modifier.fillMaxSize().graphicsLayer { alpha = s.worldAlpha })
         // one call site, always: moving the camera between two places would rebuild it and restart the camera mid-start
         camera(Modifier.fillMaxSize().graphicsLayer { scaleX = s.cameraScale; scaleY = s.cameraScale; alpha = s.cameraAlpha })
-        if (s.overlayAlpha > 0f) PositionOverlay(s.found, nowSec, Modifier.fillMaxSize().graphicsLayer { alpha = s.overlayAlpha })
+        if (s.overlayAlpha * positionAlpha > 0.01f) PositionOverlay(s.found, nowSec, Modifier.fillMaxSize().graphicsLayer { alpha = s.overlayAlpha * positionAlpha })
         pose(s.avatar)
     }
 }

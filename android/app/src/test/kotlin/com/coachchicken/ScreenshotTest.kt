@@ -128,6 +128,22 @@ class StartSequenceScreenshotTest {
         }
     }
 
+    /** The HUD in the get-into-position state and while planking, over a stand-in picture. */
+    @Test fun hud() {
+        for (planking in listOf(false, true)) {
+            paparazzi.snapshot(name = if (planking) "hudPlanking" else "hudReady") {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF3A6B30))) {
+                    PoseOverlay(null, mirror = true, modifier = Modifier.fillMaxSize(), avatar = if (planking) 1f else 0f, templateAlpha = if (planking) 0f else 1f)
+                    SideHud(
+                        planking, false, if (planking) "Planking. Get up or tap Stop to end early." else "Get into plank position.", 0f, "0:58",
+                        if (planking) "Stop" else "Start plank", {}, if (planking) HudStyle.STOP else HudStyle.PRIMARY,
+                        if (planking) emptyList() else listOf("Close" to {}, "Rear cam" to {}, "Copy log" to {}), 240.dp,
+                    )
+                }
+            }
+        }
+    }
+
     @Test fun sequence() {
         val p = pose()
         for (progress in listOf(0f, 0.08f, 0.2f, 0.3f, 0.38f, 0.5f, 1f)) {
