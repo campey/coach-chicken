@@ -117,6 +117,15 @@ class StartSequenceScreenshotTest {
         }
     }
 
+    /** The get-into-position screen: the blue ghost template where the player should be, before anyone is found. */
+    @Test fun templateGhost() {
+        paparazzi.snapshot(name = "ghost") {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(androidx.compose.ui.graphics.Color(0xFF5B6B58), androidx.compose.ui.graphics.Color(0xFF2B2F2A))))) {
+                PoseOverlay(null, mirror = true, modifier = Modifier.fillMaxSize(), templateAlpha = 1f)
+            }
+        }
+    }
+
     @Test fun sequence() {
         val p = pose()
         for (progress in listOf(0f, 0.08f, 0.2f, 0.3f, 0.38f, 0.5f, 1f)) {

@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import com.coachchicken.core.Exercise
+import com.coachchicken.core.Exercises
 import com.coachchicken.core.PoseIdx
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -56,6 +58,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -227,10 +230,13 @@ private fun CameraLayer(
             analyzer.close()
         }
     }
+    // the target ghost shows until a plank is found, then fades away
+    val inPosition = state.pose?.grade.let { it == PlankGrade.OK || it == PlankGrade.PERFECT }
+    val ghost by androidx.compose.animation.core.animateFloatAsState(if (state.phase == Phase.READY && !inPosition) 1f else 0f, tween(450), label = "ghost")
     StartSequenceLayers(
         progress, view, nowSec, Modifier.fillMaxSize(),
         camera = { m -> CameraPreview(front = state.frontCamera, analyzer = analyzer, executor = executor, modifier = m) },
-        pose = { avatar -> PoseOverlay(state.pose, mirror = state.frontCamera, modifier = Modifier.fillMaxSize(), avatar = avatar, view = view) },
+        pose = { avatar -> PoseOverlay(state.pose, mirror = state.frontCamera, modifier = Modifier.fillMaxSize(), avatar = avatar, view = view, templateAlpha = ghost) },
     )
 }
 
@@ -353,21 +359,27 @@ private fun DrawScope.drawSparkles(bones: List<Pair<Offset, Offset>>, aura: Floa
  * hip turns green while it is inside the zone.
  */
 @Composable
-internal fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier, avatar: Float = 0f, view: () -> WorldView = { WorldView() }) {
+internal fun PoseOverlay(
+    pose: PoseUi?, mirror: Boolean, modifier: Modifier, avatar: Float = 0f, view: () -> WorldView = { WorldView() },
+    /** The exercise whose ghost template is drawn as the target to get into, faded in by [templateAlpha] (0..1). */
+    exercise: Exercise = Exercises.PLANK, templateAlpha: Float = 0f,
+) {
     val sparkling = (pose?.aura ?: 0f) > 0.12f
     var clockMs by remember { mutableLongStateOf(0L) }
     LaunchedEffect(sparkling) {
         while (sparkling) withFrameNanos { clockMs = it / 1_000_000 } // only animates while there is something to animate
     }
+    // which way the player faces, as it appears on screen: the ghost turns to match once a body has been seen
+    val facingRight = remember { booleanArrayOf(false) }
     Canvas(modifier) {
-        if (pose == null) return@Canvas
+        val aspect = pose?.aspect ?: (4f / 3f)
         val viewAspect = size.width / size.height
         // the live preview fills the screen (cropping the picture), so the skeleton is mapped the same way; as it turns
         // into an avatar the picture is gone and it eases to showing the whole frame, so nothing is cut off
-        val fillW = if (viewAspect > pose.aspect) size.width else size.height * pose.aspect
-        val fillH = if (viewAspect > pose.aspect) size.width / pose.aspect else size.height
-        val fitW = if (viewAspect > pose.aspect) size.height * pose.aspect else size.width
-        val fitH = if (viewAspect > pose.aspect) size.height else size.width / pose.aspect
+        val fillW = if (viewAspect > aspect) size.width else size.height * aspect
+        val fillH = if (viewAspect > aspect) size.width / aspect else size.height
+        val fitW = if (viewAspect > aspect) size.height * aspect else size.width
+        val fitH = if (viewAspect > aspect) size.height else size.width / aspect
         val w = fillW + (fitW - fillW) * avatar.coerceIn(0f, 1f)
         val h = fillH + (fitH - fillH) * avatar.coerceIn(0f, 1f)
         val ox = (size.width - w) / 2
@@ -376,6 +388,15 @@ internal fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier, ava
         // the marks sit on the edge of what the camera sees, or of the screen where the picture runs off it
         val ml = maxOf(ox, 0f); val mt = maxOf(oy, 0f)
         drawCaptureMarks(ml, mt, minOf(ox + w, size.width) - ml, minOf(oy + h, size.height) - mt, 1f)
+        if (pose != null && pose.grade != PlankGrade.NO_BODY && pose.landmarks.size >= PoseIdx.COUNT) {
+            val nose = pose.landmarks[PoseIdx.NOSE]; val hip = pose.landmarks[PoseIdx.L_HIP]
+            if (nose.visibility > 0.3f && hip.visibility > 0.3f) {
+                val nx = if (mirror) 1 - nose.x else nose.x; val hx = if (mirror) 1 - hip.x else hip.x
+                facingRight[0] = nx > hx
+            }
+        }
+        if (templateAlpha > 0.01f && avatar < 0.01f) drawTemplate(exercise, facingRight[0], ox, oy, w, h, templateAlpha * (0.85f + 0.3f * (0.5f + 0.5f * sin(clockMs / 700.0).toFloat())))
+        if (pose == null) return@Canvas
         // once it is an avatar it lives in the field: it turns with the phone like the scene does, and stands on the grass
         val v = view()
         val pxDegX = size.width / (if (size.width > size.height) 80f else 55f)
@@ -487,6 +508,23 @@ internal fun DrawScope.drawPoseScene(
             val judgedHip = if (pose.judgedSide == 'L') 23 else 24
             if (visible(judgedHip)) drawCircle(Green, 9.dp.toPx(), at(lms[judgedHip]))
         }
+}
+
+private val TemplateBlue = Color(0xFF00B4FF)
+
+/**
+ * The ghost of [exercise]: a semi-transparent electric blue skeleton where the player is expected to be. It is drawn into
+ * one layer so the bones do not show through each other, then faded to about a fifth of full strength.
+ */
+private fun DrawScope.drawTemplate(exercise: Exercise, facingRight: Boolean, ox: Float, oy: Float, w: Float, h: Float, strength: Float) {
+    val lms = MutableList(PoseIdx.COUNT) { Landmark(0f, 0f, 0f) }
+    exercise.template.forEach { (i, xy) -> lms[i] = Landmark(if (facingRight) 1f - xy.first else xy.first, xy.second, 1f) }
+    drawIntoCanvas { canvas ->
+        val paint = androidx.compose.ui.graphics.Paint().apply { alpha = (0.2f * strength).coerceIn(0f, 1f) }
+        canvas.saveLayer(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height), paint)
+        drawBoneSkeleton(lms, { Offset(ox + it.x * w, oy + it.y * h) }, 'L', BonePalette(ink = Color(0xFFD6F4FF), fill = TemplateBlue, shine = Color.White), 0f, 0f)
+        canvas.restore()
+    }
 }
 
 private val InLine = Color(0xFF5FD078)
