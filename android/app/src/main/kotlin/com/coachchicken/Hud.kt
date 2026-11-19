@@ -33,16 +33,38 @@ import androidx.compose.ui.unit.sp
 // The session's heads-up display, in a game-menu language: slanted tiles, hard offset shadows, bold italic capitals and
 // saturated colours that read at a glance across the room.
 
-private val HudNavy = Color(0xFF0B1230)
-private val HudBlue = Color(0xFF2338A8)
-private val HudCyan = Color(0xFF4FD8FF)
-private val HudYellow = Color(0xFFFFE000)
-private val HudPink = Color(0xFFFF3D77)
+internal val HudNavy = Color(0xFF0B1230)
+internal val HudBlue = Color(0xFF2338A8)
+internal val HudCyan = Color(0xFF4FD8FF)
+internal val HudYellow = Color(0xFFFFE000)
+internal val HudPink = Color(0xFFFF3D77)
 
-/** A parallelogram: the top edge shifted right by [lean] of the height, like a game-menu tile. */
-private val Slanted: Shape = GenericShape { size, _ ->
-    val lean = size.height * 0.28f
-    moveTo(lean, 0f); lineTo(size.width, 0f); lineTo(size.width - lean, size.height); lineTo(0f, size.height); close()
+/** A parallelogram whose top edge is shifted right by [lean], so every tile leans at the same angle whatever its size. */
+class SlantShape(private val lean: Dp) : Shape {
+    override fun createOutline(size: androidx.compose.ui.geometry.Size, layoutDirection: androidx.compose.ui.unit.LayoutDirection, density: androidx.compose.ui.unit.Density): androidx.compose.ui.graphics.Outline {
+        val l = with(density) { lean.toPx() }.coerceAtMost(size.width / 3)
+        return androidx.compose.ui.graphics.Outline.Generic(
+            androidx.compose.ui.graphics.Path().apply {
+                moveTo(l, 0f); lineTo(size.width, 0f); lineTo(size.width - l, size.height); lineTo(0f, size.height); close()
+            },
+        )
+    }
+}
+
+private val Slanted: Shape = SlantShape(14.dp)
+
+/** A slanted panel with a hard shadow, [fill] and a coloured [edge]; the content sits inside it. */
+@Composable
+fun HudTile(
+    modifier: Modifier = Modifier, fill: Color = HudNavy.copy(alpha = 0.92f), edge: Color = HudCyan, lean: Dp = 14.dp,
+    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit,
+) {
+    val shape = remember(lean) { SlantShape(lean) }
+    Box(modifier) {
+        Box(Modifier.matchParentSize().offset(3.dp, 4.dp).clip(shape).background(Color(0xFF05081A)))
+        Box(Modifier.matchParentSize().clip(shape).background(fill).border(BorderStroke(2.dp, edge), shape))
+        Box(Modifier.padding(horizontal = lean), content = content)
+    }
 }
 
 enum class HudStyle { PRIMARY, SECONDARY, STOP }
