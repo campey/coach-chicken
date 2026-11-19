@@ -77,8 +77,8 @@ class ScreenshotTest {
     @Test fun launcherIcon() {
         paparazzi.snapshot {
             androidx.compose.foundation.layout.Row(Modifier.background(androidx.compose.ui.graphics.Color(0xFF202124)).padding(16.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)) {
-                for (shape in listOf<androidx.compose.ui.graphics.Shape>(androidx.compose.foundation.shape.CircleShape, androidx.compose.foundation.shape.RoundedCornerShape(24.dp))) {
-                    androidx.compose.foundation.layout.Box(Modifier.size(140.dp).clip(shape)) {
+                for (shape in listOf<androidx.compose.ui.graphics.Shape>(androidx.compose.foundation.shape.CircleShape, androidx.compose.foundation.shape.RoundedCornerShape(40.dp))) {
+                    androidx.compose.foundation.layout.Box(Modifier.size(220.dp).clip(shape)) {
                         androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(R.drawable.ic_launcher_background), null, Modifier.fillMaxSize())
                         androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(R.drawable.ic_launcher_foreground), null, Modifier.fillMaxSize())
                     }
