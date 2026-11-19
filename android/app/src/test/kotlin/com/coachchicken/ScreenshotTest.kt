@@ -3,6 +3,8 @@ package com.coachchicken
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
@@ -69,6 +71,20 @@ class ScreenshotTest {
                 WinBanner(62_000, Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(bottom = 24.dp))
             }
         } } }
+    }
+
+    /** The launcher icon: its two layers stacked and cropped to a circle and a rounded square, as a phone's launcher would. */
+    @Test fun launcherIcon() {
+        paparazzi.snapshot {
+            androidx.compose.foundation.layout.Row(Modifier.background(androidx.compose.ui.graphics.Color(0xFF202124)).padding(16.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)) {
+                for (shape in listOf<androidx.compose.ui.graphics.Shape>(androidx.compose.foundation.shape.CircleShape, androidx.compose.foundation.shape.RoundedCornerShape(24.dp))) {
+                    androidx.compose.foundation.layout.Box(Modifier.size(140.dp).clip(shape)) {
+                        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(R.drawable.ic_launcher_background), null, Modifier.fillMaxSize())
+                        androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(R.drawable.ic_launcher_foreground), null, Modifier.fillMaxSize())
+                    }
+                }
+            }
+        }
     }
 
     @Test fun doneScreen() {
