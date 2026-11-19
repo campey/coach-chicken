@@ -135,9 +135,8 @@ class StartSequenceScreenshotTest {
                 androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF3A6B30))) {
                     PoseOverlay(null, mirror = true, modifier = Modifier.fillMaxSize(), avatar = if (planking) 1f else 0f, templateAlpha = if (planking) 0f else 1f)
                     SideHud(
-                        planking, false, if (planking) "Planking. Get up or tap Stop to end early." else "Get into plank position.", 0f, "0:58",
-                        if (planking) "Stop" else "Start plank", {}, if (planking) HudStyle.STOP else HudStyle.PRIMARY,
-                        if (planking) emptyList() else listOf("Close" to {}, "Rear cam" to {}, "Copy log" to {}), 240.dp,
+                        planking, false, if (planking) "Planking. Get up or tap the stop button to end early." else "Get into plank position.", 0f, "0:58",
+                        {}, {}, {}, {}, {}, listOf("Plank", "More"), 240.dp,
                     )
                 }
             }

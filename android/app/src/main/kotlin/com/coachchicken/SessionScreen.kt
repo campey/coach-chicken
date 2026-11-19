@@ -170,7 +170,7 @@ fun SessionScreen(
         val hold = state.pose?.holdProgress ?: 0f
 
         if (sidePanel) {
-            SideHud(planking, reached, status, hold, timerText, primaryLabel, primaryClick, primaryStyle, extras, panelW)
+            SideHud(planking, reached, status, hold, timerText, onStartPlank, onEnd, onFlip, onClose, onCopyLog, com.coachchicken.core.Exercises.all.map { it.name }, panelW)
         } else
         Column(
             Modifier.fillMaxSize().systemBarsPadding().padding(16.dp),
@@ -208,36 +208,44 @@ fun SessionScreen(
     }
 }
 
-/** The landscape camera HUD: the hint over the picture and, while planking, two small pieces in the corners; otherwise the controls in the free strip. */
+/**
+ * The landscape camera HUD, laid out like a phone's camera app. Getting into position: a hint over the picture, and in the
+ * strip beside it the flip button, the red record button, close, and the mode strip. While planking: a red timer pill and
+ * a stop capsule, small and out of the way of the player.
+ */
 @Composable
 internal fun SideHud(
     planking: Boolean, reached: Boolean, status: String, hold: Float, timerText: String,
-    primaryLabel: String, primaryClick: () -> Unit, primaryStyle: HudStyle, extras: List<Pair<String, () -> Unit>>, panelW: androidx.compose.ui.unit.Dp,
+    onStart: () -> Unit, onStop: () -> Unit, onFlip: () -> Unit, onClose: () -> Unit, onCopyLog: (() -> Unit)?,
+    exerciseNames: List<String>, panelW: androidx.compose.ui.unit.Dp,
 ) {
     Box(Modifier.fillMaxSize().systemBarsPadding().padding(12.dp)) {
-        // the hint, over the picture
         Column(Modifier.align(Alignment.TopCenter), horizontalAlignment = Alignment.CenterHorizontally) {
-            HudTag(status, Modifier.widthIn(max = 420.dp))
+            if (planking) RecordPill(timerText, reached)
+            HintPill(status, Modifier.padding(top = if (planking) 8.dp else 0.dp).widthIn(max = 420.dp))
             if (!planking && hold > 0f) {
                 LinearProgressIndicator(progress = { hold }, modifier = Modifier.padding(top = 8.dp).width(180.dp))
             }
         }
         if (planking) {
-            // while planking the player takes the middle of the screen, so only two small pieces stay on it, stacked on the
-            // right edge at mid-height where they clear the frame's corner marks
-            Column(Modifier.align(Alignment.CenterEnd), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                HudTimer(timerText, reached)
-                HudButton(primaryLabel, primaryClick, Modifier.width(150.dp), primaryStyle)
-            }
+            StopCapsule(onStop, Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 8.dp))
         } else {
-            // the controls live in the free strip beside the picture
-            Column(
-                Modifier.align(Alignment.CenterEnd).width(panelW - 24.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                HudButton(primaryLabel, primaryClick, Modifier.fillMaxWidth(), primaryStyle, height = 60.dp)
-                extras.forEach { (label, click) -> HudButton(label, click, Modifier.fillMaxWidth()) }
+            Row(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(panelW - 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(
+                    Modifier.weight(1f).fillMaxHeight().padding(start = 44.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CameraRoundButton(onClose, size = 52.dp) { CloseIcon() }
+                        GapW(10.dp)
+                        CameraRoundButton(onFlip, size = 52.dp) { FlipIcon() }
+                    }
+                    ShutterButton(onStart)
+                    Box(Modifier.padding(bottom = 8.dp).height(44.dp)) { if (onCopyLog != null) LogButton(onCopyLog) }
+                }
+                Column(Modifier.fillMaxHeight().padding(start = 4.dp, end = 4.dp), verticalArrangement = Arrangement.Center) {
+                    ModeStrip(exerciseNames, 0)
+                }
             }
         }
     }
@@ -275,16 +283,16 @@ private fun CameraLayer(
 
 private fun statusText(state: UiState, reached: Boolean): String = when {
     state.phase == Phase.PLANKING && reached ->
-        if (state.cameraOn) "Goal reached! Keep going, then get up or tap Done." else "Goal reached! Keep going, then tap Done."
+        if (state.cameraOn) "Goal reached! Keep going, then get up or tap the stop button." else "Goal reached! Keep going, then tap Done."
     state.phase == Phase.PLANKING && state.pose?.endsInMs != null ->
         "Back into plank! Ending in ${(state.pose.endsInMs + 999) / 1000}s"
     state.phase == Phase.PLANKING && state.pose?.hipInZone == false ->
         "Planking. Aim your hips for the green zone."
     state.phase == Phase.PLANKING ->
-        if (state.cameraOn) "Planking. Get up or tap Stop to end early." else "Planking. Tap Stop to end early."
+        if (state.cameraOn) "Planking. Get up or tap the stop button to end early." else "Planking. Tap Stop to end early."
     !state.cameraOn -> "Get into position, then tap Start plank."
     state.pose == null || state.pose.grade == PlankGrade.NO_BODY ->
-        "Prop the phone so the camera sees you side-on, then plank (or tap Start plank)."
+        "Prop the phone so the camera sees you side-on, then plank (or tap the red button)."
     state.pose.headOutOfFrame ->
         "Your head is out of frame. Move the phone further back."
     state.pose.feetOutOfFrame && state.phase == Phase.READY ->
