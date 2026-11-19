@@ -278,7 +278,7 @@ private fun CameraPreview(front: Boolean, analyzer: ImageAnalysis.Analyzer, exec
     }
     val previewView = remember {
         PreviewView(context).apply {
-            scaleType = PreviewView.ScaleType.FIT_CENTER
+            scaleType = PreviewView.ScaleType.FILL_CENTER // the whole screen is the viewfinder
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE // a texture view, so it can scale and fade
         }
     }
@@ -362,12 +362,20 @@ internal fun PoseOverlay(pose: PoseUi?, mirror: Boolean, modifier: Modifier, ava
     Canvas(modifier) {
         if (pose == null) return@Canvas
         val viewAspect = size.width / size.height
-        val (w, h) = if (viewAspect > pose.aspect) (size.height * pose.aspect) to size.height
-        else size.width to (size.width / pose.aspect)
+        // the live preview fills the screen (cropping the picture), so the skeleton is mapped the same way; as it turns
+        // into an avatar the picture is gone and it eases to showing the whole frame, so nothing is cut off
+        val fillW = if (viewAspect > pose.aspect) size.width else size.height * pose.aspect
+        val fillH = if (viewAspect > pose.aspect) size.width / pose.aspect else size.height
+        val fitW = if (viewAspect > pose.aspect) size.height * pose.aspect else size.width
+        val fitH = if (viewAspect > pose.aspect) size.height else size.width / pose.aspect
+        val w = fillW + (fitW - fillW) * avatar.coerceIn(0f, 1f)
+        val h = fillH + (fitH - fillH) * avatar.coerceIn(0f, 1f)
         val ox = (size.width - w) / 2
         val oy = (size.height - h) / 2
         fun at(x: Float, y: Float) = Offset(ox + (if (mirror) 1 - x else x) * w, oy + y * h)
-        drawCaptureMarks(ox, oy, w, h, avatar)
+        // the marks sit on the edge of what the camera sees, or of the screen where the picture runs off it
+        val ml = maxOf(ox, 0f); val mt = maxOf(oy, 0f)
+        drawCaptureMarks(ml, mt, minOf(ox + w, size.width) - ml, minOf(oy + h, size.height) - mt, 1f)
         // once it is an avatar it lives in the field: it turns with the phone like the scene does, and stands on the grass
         val v = view()
         val pxDegX = size.width / (if (size.width > size.height) 80f else 55f)

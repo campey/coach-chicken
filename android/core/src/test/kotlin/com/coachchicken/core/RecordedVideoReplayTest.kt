@@ -75,15 +75,16 @@ class RecordedVideoReplayTest {
         val (_, ended, lostAt) = replay()
         assertNotNull(ended)
         assertNotNull(lostAt)
-        // with the generous tolerance the slow hip-lift (from ~27s) is accepted until the body visibly tilts (~28.4s)
-        assertTrue(lostAt in 27_500..29_000, "lapse began at $lostAt")
-        assertTrue(ended in 30_500..32_500, "ended at $ended")
+        // the slow hip-lift (from ~26s) is noticed when the thigh stops carrying on from the torso (knee line check),
+        // about a second before the shoulder-to-ankle line moves
+        assertTrue(lostAt in 26_000..29_000, "lapse began at $lostAt")
+        assertTrue(ended in 29_500..32_500, "ended at $ended")
         assertEquals(true, ended - lostAt >= 3_000)
     }
 
     @Test fun warnsOnceWhenGettingUpAndNeverDuringThePlank() {
         replay()
         assertEquals(1, warnings.size, "warnings at $warnings")
-        assertTrue(warnings.single() in 28_500..30_500, "warned at ${warnings.single()}")
+        assertTrue(warnings.single() in 27_500..30_500, "warned at ${warnings.single()}")
     }
 }

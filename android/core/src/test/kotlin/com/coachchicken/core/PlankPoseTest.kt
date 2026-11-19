@@ -297,3 +297,32 @@ class AllFoursTest {
         assertNull(plankMetrics(poseWithKnee(0.25f to 0.50f, 0.25f to 0.62f, 0.50f to 0.54f, 0.65f to 0.56f, 0.80f to 0.58f).toMutableList().also { it[25] = Landmark(0f, 0f, 0f) })!!.kneeLineDeg) // no knee seen: nothing to judge
     }
 }
+
+/**
+ * Rows of a real 63 s front-camera run (app 0.5.17, before the knee check) in which the knees were on the floor for long
+ * stretches yet nearly every frame graded PERFECT. Columns: the pose log's, up to the right ankle. The straight-legged
+ * stretches (26-35 s, 46 s, 52 s) must stay perfect; the knees-down frames must not count.
+ */
+class KneesDownRunTest {
+    private class Row(val t: Long, val logged: String, val lms: List<Landmark>)
+
+    private val rows: List<Row> = javaClass.classLoader!!.getResource("knees_down_run.csv")!!.readText().lines().filter { it.isNotBlank() }.map { line ->
+        val f = line.split(',')
+        val v = f.drop(14).map { it.toFloat() }
+        val lms = MutableList(PoseIdx.COUNT) { Landmark(0f, 0f, 0f) }
+        // nose, lsho, rsho, lelb, relb, lwri, rwri, lhip, rhip, lkne, rkne, lank, rank
+        val ids = intArrayOf(PoseIdx.NOSE, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28)
+        ids.forEachIndexed { q, id -> lms[id] = Landmark(v[2 * q], v[2 * q + 1]) }
+        Row(f[0].toLong(), f[2], lms)
+    }
+
+    private fun grade(t: Long) = gradePlank(rows.first { it.t == t }.lms, 1.333f)
+
+    @Test fun theStraightLeggedStretchesStayPerfect() {
+        for (t in listOf(26753L, 33006L, 52790L, 46636L)) assertEquals(PlankGrade.PERFECT, grade(t), "t=$t")
+    }
+
+    @Test fun kneesOnTheFloorFramesDoNotCount() {
+        for (t in listOf(10259L, 11604L, 12664L, 42361L, 5727L)) assertEquals(PlankGrade.NOT_PLANK, grade(t), "t=$t")
+    }
+}

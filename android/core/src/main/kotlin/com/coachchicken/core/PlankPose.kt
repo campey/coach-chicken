@@ -50,10 +50,11 @@ data class PlankTolerances(
     val okElbowDrop: Double = 0.10,
     val okElbowOffset: Double = 0.9,
     // The thigh must carry on from the torso: shoulder-hip-knee. On all fours the thigh hangs straight down (about 90),
-    // which the shoulder-hip-ankle angle hides because the shin trails out behind. A real plank run read 158-180 here,
-    // so these leave room for the same wobble; a knee plank is a straight line to the knee and passes.
-    val okKneeLineDeg: Double = 125.0,
-    val perfectKneeLineDeg: Double = 150.0,
+    // which the shoulder-hip-ankle angle hides because the shin trails out behind. A good plank read 158-180 here
+    // in two real runs (0.4.2 and 0.5.17); frames with the knees on the floor read 108-144. A knee plank with the thigh in
+    // line with the torso is a straight line to the knee and passes.
+    val okKneeLineDeg: Double = 150.0,
+    val perfectKneeLineDeg: Double = 160.0,
     // PERFECT deliberately has no body-angle limit: that angle is measured against the camera's horizon, so a phone
     // propped at a slight tilt (one real run read a straight plank as 12-17 degrees) must not cost a perfect grade.
     // Perfect is about the shape of the body (straight hips, forearm propped) and staying in the green zone.

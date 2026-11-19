@@ -157,8 +157,7 @@ internal fun PositionOverlay(found: Float, nowSec: () -> Float, modifier: Modifi
         val tl = Offset((w - fw) / 2, (h - fh) / 2 + (if (landscape) h * 0.04f else 0f))
         val radius = minOf(fw, fh) * 0.16f
         // the dark layer, with a feathered hole where the frame is
-        drawRect(Color.Black.copy(alpha = 0.3f))
-        drawRect(Color.Black.copy(alpha = 0.97f))
+        drawRect(Color.Black.copy(alpha = 0.42f)) // a viewfinder: the picture shows across the whole screen, a little dimmed
         val steps = 18
         val feather = minOf(w, h) * 0.05f
         for (i in 0..steps) {
