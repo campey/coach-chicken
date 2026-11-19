@@ -1,5 +1,7 @@
 package com.coachchicken
 
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -133,7 +135,13 @@ class StartSequenceScreenshotTest {
                 StartSequenceLayers(
                     progress, { WorldView(yaw = 5f, pitch = 2f, roll = 3f) }, { 1f }, Modifier.fillMaxSize(),
                     camera = { m ->
-                        androidx.compose.foundation.layout.Box(m.background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(androidx.compose.ui.graphics.Color(0xFF2D323D), androidx.compose.ui.graphics.Color(0xFF14161C)))))
+                        // the live preview: the whole 4:3 frame, pinned to the left
+                        androidx.compose.foundation.layout.Box(m) {
+                            androidx.compose.foundation.layout.Box(
+                                Modifier.fillMaxHeight().aspectRatio(4f / 3f)
+                                    .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(androidx.compose.ui.graphics.Color(0xFF5B6B58), androidx.compose.ui.graphics.Color(0xFF2B2F2A)))),
+                            )
+                        }
                     },
                     pose = { av -> PoseOverlay(p, mirror = true, modifier = Modifier.fillMaxSize(), avatar = av, view = { WorldView(yaw = 5f, pitch = 2f, roll = 3f) }) },
                 )

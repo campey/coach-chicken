@@ -148,13 +148,15 @@ private val Found = Color(0xFF5FD078)
  * everything outside the frame fading quickly to black. The frame turns solid green when [found] reaches 1.
  */
 @Composable
-internal fun PositionOverlay(found: Float, nowSec: () -> Float, modifier: Modifier = Modifier) {
+internal fun PositionOverlay(found: Float, nowSec: () -> Float, modifier: Modifier = Modifier, frameAspect: Float = 4f / 3f) {
     Canvas(modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }) {
         val w = size.width; val h = size.height
-        val landscape = w > h
-        val fw = if (landscape) w * 0.64f else w * 0.84f
-        val fh = if (landscape) h * 0.5f else h * 0.34f
-        val tl = Offset((w - fw) / 2, (h - fh) / 2 + (if (landscape) h * 0.04f else 0f))
+        // the camera frame is pinned top-left; the dashed target sits in the middle of it
+        val frameW = if (w / h > frameAspect) h * frameAspect else w
+        val frameH = if (w / h > frameAspect) h else w / frameAspect
+        val fw = frameW * 0.78f
+        val fh = frameH * 0.5f
+        val tl = Offset((frameW - fw) / 2, (frameH - fh) / 2 + frameH * 0.04f)
         val radius = minOf(fw, fh) * 0.16f
         // the dark layer, with a feathered hole where the frame is
         drawRect(Color.Black.copy(alpha = 0.42f)) // a viewfinder: the picture shows across the whole screen, a little dimmed
@@ -172,9 +174,9 @@ internal fun PositionOverlay(found: Float, nowSec: () -> Float, modifier: Modifi
         val dash = 9.dp.toPx()
         val effect = if (found < 0.5f) PathEffect.dashPathEffect(floatArrayOf(dash, dash * 0.9f), (nowSec() * 18.dp.toPx()) % (dash * 1.9f)) else null
         val pulse = 1f + 0.035f * sin(found * PI.toFloat())
-        scale(pulse, pulse, Offset(w / 2, tl.y + fh / 2)) {
+        scale(pulse, pulse, Offset(tl.x + fw / 2, tl.y + fh / 2)) {
             drawRoundRect(c.copy(alpha = 0.92f), tl, Size(fw, fh), CornerRadius(radius), style = Stroke(stroke, cap = StrokeCap.Round, pathEffect = effect))
-            val cx = w / 2; val cy = tl.y + fh / 2; val gap = 8.dp.toPx(); val arm = 14.dp.toPx()
+            val cx = tl.x + fw / 2; val cy = tl.y + fh / 2; val gap = 8.dp.toPx(); val arm = 14.dp.toPx()
             val cc = c.copy(alpha = 0.6f + 0.35f * found)
             drawLine(cc, Offset(cx, cy - gap - arm), Offset(cx, cy - gap), stroke, StrokeCap.Round)
             drawLine(cc, Offset(cx, cy + gap), Offset(cx, cy + gap + arm), stroke, StrokeCap.Round)

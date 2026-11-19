@@ -27,6 +27,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -131,7 +134,11 @@ fun SessionScreen(
     val clock = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(onCam) { while (onCam) withFrameNanos { clock.floatValue = it / 1e9f } } // read only while drawing, so no recomposition
     val worldView = rememberWorldView(enabled = onCam && progress.value > 0.02f)
-    Box(Modifier.fillMaxSize().background(if (onCam) Color.Black else MaterialTheme.colorScheme.background)) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().background(if (onCam) Color.Black else MaterialTheme.colorScheme.background)) {
+        // in landscape with the camera on, the frame takes the left of the screen at full height and the controls the rest
+        val frameW = minOf(maxWidth, maxHeight * (4f / 3f))
+        val panelW = maxWidth - frameW
+        val sidePanel = landscape && onCam && panelW >= 180.dp
         if (onCam) {
             CameraLayer(state, onPose, progress.value, { worldView.value }, { clock.floatValue })
             state.pose?.let {
@@ -150,16 +157,13 @@ fun SessionScreen(
         val primaryLabel = if (state.phase == Phase.READY) "Start plank" else if (reached) "Done" else "Stop"
         val primaryClick = if (state.phase == Phase.READY) onStartPlank else onEnd
         val outlined = ButtonDefaults.outlinedButtonColors(containerColor = scrim, contentColor = fg)
+        val extras = buildList {
+            if (state.phase == Phase.READY) add("Close" to onClose)
+            if (onCam) add((if (state.frontCamera) "Rear cam" else "Front cam") to onFlip)
+            if (onCam && onCopyLog != null) add("Copy log" to onCopyLog)
+        }
         val extraButtons: @Composable RowScope.() -> Unit = {
-            if (state.phase == Phase.READY) {
-                OutlinedButton(onClose, Modifier.weight(1f), colors = outlined) { Text("Close") }
-            }
-            if (onCam) {
-                OutlinedButton(onFlip, Modifier.weight(1f), colors = outlined) { Text(if (state.frontCamera) "Rear cam" else "Front cam") }
-            }
-            if (onCam && onCopyLog != null) {
-                OutlinedButton(onCopyLog, Modifier.weight(1f), colors = outlined) { Text("Copy log") }
-            }
+            extras.forEach { (label, click) -> OutlinedButton(click, Modifier.weight(1f), colors = outlined) { Text(label) } }
         }
         val timer: @Composable () -> Unit = {
             Text(
@@ -170,6 +174,31 @@ fun SessionScreen(
             )
         }
 
+        if (sidePanel) {
+            Box(Modifier.fillMaxSize().systemBarsPadding()) {
+                // the hint is overlaid on the viewfinder
+                Column(Modifier.width(frameW).padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        statusText(state, reached), color = fg, textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.background(scrim, RoundedCornerShape(12.dp)).padding(12.dp),
+                    )
+                    val hold = state.pose?.holdProgress ?: 0f
+                    if (state.phase == Phase.READY && hold > 0f) {
+                        LinearProgressIndicator(progress = { hold }, modifier = Modifier.padding(top = 8.dp).fillMaxWidth(0.6f))
+                    }
+                }
+                // the controls live in the free strip beside it
+                Column(
+                    Modifier.align(Alignment.CenterEnd).width(panelW).fillMaxHeight().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    if (state.phase == Phase.PLANKING) timer()
+                    Button(primaryClick, Modifier.fillMaxWidth().height(56.dp)) { Text(primaryLabel) }
+                    extras.forEach { (label, click) -> OutlinedButton(click, Modifier.fillMaxWidth(), colors = outlined) { Text(label) } }
+                }
+            }
+        } else
         Column(
             Modifier.fillMaxSize().systemBarsPadding().padding(16.dp),
             verticalArrangement = Arrangement.SpaceBetween,
@@ -284,7 +313,7 @@ private fun CameraPreview(front: Boolean, analyzer: ImageAnalysis.Analyzer, exec
     }
     val previewView = remember {
         PreviewView(context).apply {
-            scaleType = PreviewView.ScaleType.FILL_CENTER // the whole screen is the viewfinder
+            scaleType = PreviewView.ScaleType.FIT_START // the whole frame, pinned to the left (top): the rest of the screen is for the controls
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE // a texture view, so it can scale and fade
         }
     }
@@ -374,20 +403,14 @@ internal fun PoseOverlay(
     Canvas(modifier) {
         val aspect = pose?.aspect ?: (4f / 3f)
         val viewAspect = size.width / size.height
-        // the live preview fills the screen (cropping the picture), so the skeleton is mapped the same way; as it turns
-        // into an avatar the picture is gone and it eases to showing the whole frame, so nothing is cut off
-        val fillW = if (viewAspect > aspect) size.width else size.height * aspect
-        val fillH = if (viewAspect > aspect) size.width / aspect else size.height
-        val fitW = if (viewAspect > aspect) size.height * aspect else size.width
-        val fitH = if (viewAspect > aspect) size.height else size.width / aspect
-        val w = fillW + (fitW - fillW) * avatar.coerceIn(0f, 1f)
-        val h = fillH + (fitH - fillH) * avatar.coerceIn(0f, 1f)
-        val ox = (size.width - w) / 2
-        val oy = (size.height - h) / 2
+        // the whole camera frame, pinned to the top-left like the live preview; the avatar lives inside this same frame,
+        // so the corner marks keep meaning something once the camera has gone
+        val w = if (viewAspect > aspect) size.height * aspect else size.width
+        val h = if (viewAspect > aspect) size.height else size.width / aspect
+        val ox = 0f
+        val oy = 0f
         fun at(x: Float, y: Float) = Offset(ox + (if (mirror) 1 - x else x) * w, oy + y * h)
-        // the marks sit on the edge of what the camera sees, or of the screen where the picture runs off it
-        val ml = maxOf(ox, 0f); val mt = maxOf(oy, 0f)
-        drawCaptureMarks(ml, mt, minOf(ox + w, size.width) - ml, minOf(oy + h, size.height) - mt, 1f)
+        drawCaptureMarks(ox, oy, w, h, 1f)
         if (pose != null && pose.grade != PlankGrade.NO_BODY && pose.landmarks.size >= PoseIdx.COUNT) {
             val nose = pose.landmarks[PoseIdx.NOSE]; val hip = pose.landmarks[PoseIdx.L_HIP]
             if (nose.visibility > 0.3f && hip.visibility > 0.3f) {
@@ -511,6 +534,7 @@ internal fun DrawScope.drawPoseScene(
 }
 
 private val TemplateBlue = Color(0xFF00B4FF)
+private val FrameGreen = Color(0xFF5FD078)
 
 /**
  * The ghost of [exercise]: a semi-transparent electric blue skeleton where the player is expected to be. It is drawn into
@@ -553,11 +577,11 @@ private fun DrawScope.drawFormDots(pose: PoseUi, at: (Landmark) -> Offset) {
     }
 }
 
-/** Small corner marks around the area the camera sees, so it is clear where the motion capture works. */
+/** Small green corner marks on the edge of the camera frame, so it is clear where the motion capture works. */
 private fun DrawScope.drawCaptureMarks(left: Float, top: Float, width: Float, height: Float, alpha: Float) {
     if (alpha <= 0.01f) return
-    val c = Color.White.copy(alpha = 0.55f * alpha)
-    val arm = 22.dp.toPx(); val sw = 2.5.dp.toPx(); val inset = 6.dp.toPx()
+    val c = FrameGreen.copy(alpha = 0.9f * alpha)
+    val arm = 24.dp.toPx(); val sw = 3.dp.toPx(); val inset = 4.dp.toPx()
     val l = left + inset; val t = top + inset; val r = left + width - inset; val b = top + height - inset
     for ((x, y, dx, dy) in listOf(listOf(l, t, 1f, 1f), listOf(r, t, -1f, 1f), listOf(l, b, 1f, -1f), listOf(r, b, -1f, -1f))) {
         drawLine(c, Offset(x, y), Offset(x + dx * arm, y), sw, StrokeCap.Round)
