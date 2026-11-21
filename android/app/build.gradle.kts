@@ -17,9 +17,11 @@ android {
         applicationId = "com.aurafarm"
         minSdk = 26
         targetSdk = 35
-        // CI passes these from the git tag (-PversionName=0.3.0 -PversionCode=<run number>)
-        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 3
-        versionName = (project.findProperty("versionName") as String?) ?: "0.3.0"
+        // CI passes these from the release tag: -PversionName=0.6.0 -PversionCode=600 (major*10000 + minor*100 + patch).
+        // The defaults are for local builds. Keep them at or above the latest release, or Android will refuse to install
+        // a local build over the released app (it will not downgrade).
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 600
+        versionName = (project.findProperty("versionName") as String?) ?: "0.6.0"
         // MediaPipe ships big native libs; arm64 covers every modern phone (no x86 emulator support).
         ndk { abiFilters += "arm64-v8a" }
     }

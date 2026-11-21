@@ -1,69 +1,82 @@
 # Aura Farm
 
-(Formerly Coach Chicken. The rubber chicken is still the coach.)
- 
-A rep counter to make exercises more fun.
+<img src="docs/images/icon.png" alt="The Aura Farm icon: a white AF over a barn silhouette, with a gold glow and sparkles" width="320" align="right">
 
-## Getting started (on Windows):
+An Android app that makes a daily plank fun. Prop your phone side-on, get into a plank, and it watches you: it
+draws you as a gold skeleton on a farm, gives you a golden aura for good form, and a rubber chicken, your coach,
+clucks at you while you hold. A 60 second plank earns the day a golden egg on your streak calendar.
 
- * Install python 3.10 from https://www.python.org/downloads/release/python-31010/
- * `pip install opencv-python`
- * `pip install mediapipe` (won't work on python 3.11, only 3.6-3.10)
- * `python coach.py`, wait a few seconds, and the camera frames should start displaying with reps and body landmarks.
+Everything runs on the phone. Pose detection (MediaPipe Pose) is on-device, the camera picture is not stored or sent by the app's own code,
+and there are no accounts. (One honest caveat about the Internet permission is in [docs/DESIGN.md](docs/DESIGN.md#privacy).)
 
-### Option for pre-recorded test
- * Download a sample video to test with. e.g. I used Juice & Toya's 15-minute workout https://www.youtube.com/watch?v=xqVBoyKXbsA, downloaded and renamed it to 15-min.mp4, this is a good sample video.
- * Change the code to use the video file not capture.
-   * comment the VideoCapture(0) line
-   * uncomment the VideoCapture loading file (and the 2000 skip loop)
- * `python coach.py` should then open the video and render frames with landmarks over it and a rep counter (current version is only squats).
+*(Aura Farm was called Coach Chicken until v0.6.0. The chicken is still the coach, and the repository keeps its old name.)*
 
-## Android app (`android/`)
+| Home | Getting ready | The plank card |
+|---|---|---|
+| <img src="docs/images/home.png" width="220"> | <img src="docs/images/session-get-ready.png" width="360"> | <img src="docs/images/plank-card.png" width="220"> |
 
-A plank timer that clucks at you, and watches you plank.
+## Install
 
-### Flow
- 1. **Home**: the calendar (golden egg ring per day with a completed plank, 5 weeks, Sunday first) and **Start session**.
- 2. **Session**: the camera shows your skeleton (MediaPipe Pose, on-device; portrait or landscape). Press **Start plank**, or just get into a plank and hold it for about a second, and the timer starts: quiet clucking throughout, a louder cluck every 10s.
-    * **The skeleton is drawn as hand-inked bones**: a spine of vertebrae, ribs, a pelvis, and for each arm a humerus with a radius and ulna as plain lines, and for each leg a femur with a tibia and fibula as plain lines; the spine runs along the back, with the ribs wrapping round to the front (wobbly outlines, knobbly ends, a little highlight). The bone colour is the grade: **gold** when the plank is perfect (straight hips, forearm propped, and the hip inside the green zone; the body's tilt against the camera is deliberately not used, so a phone propped at an angle doesn't cost you), plain **yellow** when it is within tolerance (still counts as a plank), and **grey** when it isn't a plank. The side being judged is drawn full size; the far side is thinner and dimmer.
-    * **Aura and sparkles** (cheesy on purpose): a pulsing gold glow builds around a perfect plank within seconds, and a slower *streak* meter keeps growing through the whole hold, so the glow gets bigger and twinkling gold-and-white stars spawn along your body, more of them the longer you hold perfect form (still escalating at 60s). It fades when form slips.
-    * **Setup hint**: if your head is out of frame the status line says so (move the phone back or turn it to landscape).
-    * **Green goal zone**: once a plank is seen, a green corridor along the ideal straight body line (shoulder to ankle; through the hip if your legs are out of frame) is the goal for the yellow. It follows you while you settle, then freezes when the timer starts. The hip being judged turns green while it is inside.
- 3. **At 60s**: a squawk, the quiet clucking stops, and the timer counts up past the goal in gold. The plank is *not* stopped: the button becomes **Done**.
- 4. **Ending**: press **Stop/Done**, or just get up. The camera low-pass filters its readings (so scattered bad frames inside a good plank, a loose jersey or a wobbly joint, don't matter) and a lapse has to last **3s** before the plank ends. About 1s into a lapse a long, building **"bwaaaak!"** starts and the status shows a countdown; get back into plank and it cuts off. If the 3s runs out the plank ends, back-dated to when you left it. 60s or more counts and earns the egg; ending earlier is logged as incomplete and leaves you in the session to try again.
- In landscape the controls sit along the top (next to the timer) so the bottom of the picture, where your forearms are, stays clear.
- Camera permission refused? The session still works with the buttons. Leaving the app winds the session up.
+Download `aura-farm-vX.Y.Z.apk` from the [latest release](https://github.com/campey/coach-chicken/releases/latest) and open
+it on an Android phone (8.0 or newer, 64-bit ARM). Android will ask you to allow installing from your browser or file manager.
 
-Later: plank form feedback ("pakak" when it's wrong).
+**Coming from Coach Chicken (v0.5 and earlier)?** Aura Farm is a different app to Android (new package `com.aurafarm`), so it
+installs *next to* the old one rather than over it. To bring your planks with you: in the old app open the menu and tap
+**Back up data**, install Aura Farm, open its menu and tap **Restore data**, then uninstall the old app so you don't get
+reminders twice. See [docs/RELEASING.md](docs/RELEASING.md#the-package-name-change) for the detail.
 
-### Build
- * Needs JDK 17+ and the Android SDK (`ANDROID_HOME`, or `sdk.dir` in `android/local.properties`).
- * `cd android && gradle :core:test :app:assembleDebug`, then install `app/build/outputs/apk/debug/app-debug.apk`.
- * `core/` is plain Kotlin (timer cues, calendar grid, log format, pose/plank detection and tracker) with unit tests, including a replay of real recorded landmarks; `app/` is the Compose UI, CameraX and MediaPipe.
+## What it does
 
-### Sounds
-The sounds in `app/src/main/res/raw/` are synthesized placeholders from `python tools/generate_sounds.py`. Replace `cluck_quiet_loop.wav`, `cluck_loud.wav`, `squawk.wav` and `bwaaak.wav` (the 2s warning that builds during the grace period) with real recordings any time.
+- **A session** switches the phone to landscape and shows the camera as a viewfinder with a ghost target skeleton to get into.
+  Hold a plank for about a second and the timer starts by itself. Get up and it ends by itself.
+- **Form checks** judge the side the camera sees best: a straight line from shoulder through hip and knee to ankle, forearms
+  propped under the shoulders. Hips sagging, piking, or being on all fours or with your knees on the floor do not count.
+- **Gold and aura.** Perfect form turns the skeleton gold and builds a glow and sparkles that grow the longer you hold it.
+- **The chicken coaches**: a quiet cluck throughout, a loud one every 10 s, a squawk at 60 s, and a building *bwaaak* if your
+  form slips for more than a second (you get 3 s to recover).
+- **A card for every plank**: a replay you can scrub, the form at each moment and a hip-angle graph, shown after the plank
+  and from the calendar. You can share it as a picture.
+- **A streak and a calendar** of golden eggs, daily reminders (6:00, 13:00, and a 21:00 streak saver), and backup and restore
+  of all of it.
 
-### Pose log
-**Copy log** (in the session, or on the home screen afterwards) puts a pasteable CSV on the clipboard: per-frame (4/s) grade (NO_BODY / NOT_PLANK / OK / PERFECT), the filtered plank signal (`plank_s`) and aura, the hip's distance from the green zone (`tgt_off`, 1 = the zone's edge), the numbers behind the grade (body angle, hip angle, elbow ratios; `lower` is A ankle / K knee / H hip only) and the key joints, plus start/stop/warning events. The camera screen shows a small `t=` clock that matches the log's `t_ms`, so a screen recording lines up with a pasted log. Paste it back to tune the plank detection thresholds (`PlankTolerances` in `core/PlankPose.kt`).
+More in [docs/DESIGN.md](docs/DESIGN.md).
 
-## Releases
+## Documentation
 
-Download the latest APK from the [Releases page](https://github.com/campey/coach-chicken/releases/latest) and open it on an Android phone (8.0+, 64-bit ARM). You will be asked to allow installing from your browser or file manager.
+| | |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is laid out and how a frame travels from the camera to the screen |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Building, testing, the headless screenshot tests, tuning the form checks from a pose log |
+| [docs/DESIGN.md](docs/DESIGN.md) | The product, the rules the form checks use and why, the visual language, the brand |
+| [docs/DATA.md](docs/DATA.md) | Every file format: plank recordings, session history, backups, the pose log |
+| [docs/RELEASING.md](docs/RELEASING.md) | Cutting a release, signing, version numbers, the package name change |
+| [docs/DEVICE-CHECKLIST.md](docs/DEVICE-CHECKLIST.md) | What the automated tests can't see, to check on a real phone before a release |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | What is planned, in what order, and the open decisions |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each release, and [docs/release-notes/](docs/release-notes/) for the full notes |
+| [docs/PROTOTYPE.md](docs/PROTOTYPE.md) | The original Python prototype (`coach.py`), kept for reference |
+| [CLAUDE.md](CLAUDE.md) | Orientation for AI coding assistants working in this repository |
 
-To cut a release, put the new version tag in the `RELEASE` file (for example `v0.3.1`), commit and push; GitHub Actions runs the tests, builds the APK and publishes the release. Pushing a git tag yourself (`git tag v0.3.1 && git push origin v0.3.1`) works too. A release that already exists is left alone.
+## Building it
 
-By default the APK is signed with a debug key. For a stable key (so phones can update across releases), create one and add four repository secrets:
+You need JDK 17 and the Android SDK (`ANDROID_HOME`, or `sdk.dir` in `android/local.properties`). There is no Gradle wrapper
+in the repository: use Gradle 8.14.3 (that is what CI uses).
 
 ```
-keytool -genkeypair -v -keystore release.jks -alias coachchicken -keyalg RSA -keysize 2048 -validity 10000
-base64 -w0 release.jks     # paste into the RELEASE_KEYSTORE_BASE64 secret
+cd android
+gradle :core:test :app:assembleDebug     # unit tests, then app/build/outputs/apk/debug/app-debug.apk
 ```
 
-with `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD` as the other three. Keep `release.jks` somewhere safe and out of the repo: if it is lost, existing installs cannot be updated.
+The app is arm64 only (MediaPipe's native libraries are large), so it will not run on an x86 emulator. See
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the screenshot tests, which render the screens without a phone or emulator.
 
-## Seeing the screens without a phone
+## Contributing
 
-`./gradlew :app:testDebugUnitTest --tests '*ScreenshotTest*'` renders the home screen, a plank card and the done screen headlessly
-(Paparazzi, no emulator needed); the images land in `android/app/build/reports/paparazzi/debug/images`. The card test replays a
-real recorded plank from `android/app/src/test/resources/run.txt`. It shows the first frame only: the replay animation does not run.
+Issues and ideas are welcome on the [issue tracker](https://github.com/campey/coach-chicken/issues). Start with
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). There is no licence file yet, so by default nobody has the right to reuse the code;
+adding one is on the [roadmap](docs/ROADMAP.md).
+
+## Credits
+
+The rubber chicken is inspired by the one with a pulley in the middle from *The Secret of Monkey Island*. The sounds are
+synthesised placeholders (`tools/generate_sounds.py`). Pose detection is Google's
+[MediaPipe Pose Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) (the lite model is bundled in the app).

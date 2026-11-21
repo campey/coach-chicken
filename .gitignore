@@ -4,3 +4,7 @@
 !android/core/src/test/resources/*.csv
 *.jks
 *.keystore
+__pycache__/
+*.pyc
+.kotlin/
+android/.kotlin/
